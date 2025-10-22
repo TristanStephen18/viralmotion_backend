@@ -1,4 +1,5 @@
-import { DEFAULT_SETTINGS } from '../../../../frontend/src/components/editors/NewTextTypingEditor/assets/configs';
+import { DEFAULT_SETTINGS } from "./texttypingassets";
+
 export const calculateDuration = (
   phrase: {
           lines: string[],
