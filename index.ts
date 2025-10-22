@@ -44,9 +44,9 @@ app.listen(3000, "0.0.0.0", () => {
   // console.log(__dirname);
   // console.log(geminiapi);
   // console.log(path.join(process.cwd(),"./server/public/datasets"));
-  fs.existsSync(entry);
-  fs.existsSync(entry2);
-  fs.existsSync(distentry);
+  console.log("entry 1: ", fs.existsSync(entry));
+  console.log("entry 2: ", fs.existsSync(entry2));
+  console.log("disentry: ", fs.existsSync(distentry));
 
   console.log("Server is running on http://0.0.0.0:3000");
 });
