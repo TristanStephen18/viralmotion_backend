@@ -44,62 +44,67 @@ import * as UbuntuMono from "@remotion/google-fonts/UbuntuMono";
 import * as Inconsolata from "@remotion/google-fonts/Inconsolata";
 import * as AnonymousPro from "@remotion/google-fonts/AnonymousPro";
 
-// System fonts (Arial, Helvetica, etc.) don’t need loaders
-
-
-const FONT_OPTIONS = {
-  weights: ["400", "700"], // load only the main weights you actually use
-  subsets: ["latin"],      // usually all you need
-  display: "swap",         // optional, but helps with render consistency
-  ignoreTooManyRequestsWarning: true, // silence warning (optional)
+const COMMON_OPTS = {
+  subsets: ["latin"],
+  display: "swap",
+  ignoreTooManyRequestsWarning: true,
 };
 
-// Load all Google Fonts used in fontOptions
+// Helper: safely load fonts and avoid crashes
+const safeLoad = (fontModule: any, options: any) => {
+  try {
+    fontModule.loadFont(options);
+  } catch (err) {
+    console.warn(`⚠️ Failed to load font: ${fontModule?.fontFamily || "unknown"}`, err);
+  }
+};
+
+// Load all Google Fonts used in the project
 export const loadAllFonts = () => {
-  // Already loaded fonts
-  PlayfairDisplay.loadFont(FONT_OPTIONS);
-  Roboto.loadFont(FONT_OPTIONS);
-  BebasNeue.loadFont(FONT_OPTIONS);
-  RussoOne.loadFont(FONT_OPTIONS);
-  LilitaOne.loadFont(FONT_OPTIONS);
-  ChangaOne.loadFont(FONT_OPTIONS);
-  ArchivoBlack.loadFont(FONT_OPTIONS);
-  GravitasOne.loadFont(FONT_OPTIONS);
-  Bungee.loadFont(FONT_OPTIONS);
-  LuckiestGuy.loadFont(FONT_OPTIONS);
-  AmaticSC.loadFont(FONT_OPTIONS);
-  Satisfy.loadFont(FONT_OPTIONS);
-  Pacifico.loadFont(FONT_OPTIONS);
-  DancingScript.loadFont(FONT_OPTIONS);
-  OleoScript.loadFont(FONT_OPTIONS);
-  Silkscreen.loadFont(FONT_OPTIONS);
-  KodeMono.loadFont(FONT_OPTIONS);
-  Asimovian.loadFont(FONT_OPTIONS);
-  Tagesschrift.loadFont(FONT_OPTIONS);
-  StoryScript.loadFont(FONT_OPTIONS);
-  BitcountGridDouble.loadFont(FONT_OPTIONS);
+  // Serif / Display
+  PlayfairDisplay.loadFont({ ...COMMON_OPTS, weights: ["400", "700", "900"] });
+  Merriweather.loadFont({ ...COMMON_OPTS, weights: ["300", "400", "700", "900"] });
+  AbrilFatface.loadFont({ ...COMMON_OPTS, weights: ["400"] });
 
-  // ✅ Newly added fonts
-  RobotoMono.loadFont(FONT_OPTIONS);
-  SourceCodePro.loadFont(FONT_OPTIONS);
-  JetBrainsMono.loadFont(FONT_OPTIONS);
-  FiraCode.loadFont(FONT_OPTIONS);
-  IBMPlexMono.loadFont(FONT_OPTIONS);
+  // Sans-serif
+  Roboto.loadFont({ ...COMMON_OPTS, weights: ["400", "500", "700"] });
+  Inter.loadFont({ ...COMMON_OPTS, weights: ["400", "500", "700"] });
+  Poppins.loadFont({ ...COMMON_OPTS, weights: ["400", "600", "700"] });
+  Montserrat.loadFont({ ...COMMON_OPTS, weights: ["400", "600", "700"] });
+  Raleway.loadFont({ ...COMMON_OPTS, weights: ["400", "600", "700"] });
+  Oswald.loadFont({ ...COMMON_OPTS, weights: ["400", "500", "700"] });
+  Anton.loadFont({ ...COMMON_OPTS, weights: ["400"] });
 
-  Inter.loadFont(FONT_OPTIONS);
-  Poppins.loadFont(FONT_OPTIONS);
-  Montserrat.loadFont(FONT_OPTIONS);
-  Raleway.loadFont(FONT_OPTIONS);
+  // Decorative / Headline
+  BebasNeue.loadFont({ ...COMMON_OPTS, weights: ["400"] });
+  RussoOne.loadFont({ ...COMMON_OPTS, weights: ["400"] });
+  LilitaOne.loadFont({ ...COMMON_OPTS, weights: ["400"] });
+  ChangaOne.loadFont({ ...COMMON_OPTS, weights: ["400", "700"] });
+  ArchivoBlack.loadFont({ ...COMMON_OPTS, weights: ["400"] });
+  GravitasOne.loadFont({ ...COMMON_OPTS, weights: ["400"] });
+  Bungee.loadFont({ ...COMMON_OPTS, weights: ["400"] });
+  LuckiestGuy.loadFont({ ...COMMON_OPTS, weights: ["400"] });
+  AmaticSC.loadFont({ ...COMMON_OPTS, weights: ["400", "700"] });
+  Satisfy.loadFont({ ...COMMON_OPTS, weights: ["400"] });
+  Pacifico.loadFont({ ...COMMON_OPTS, weights: ["400"] });
+  DancingScript.loadFont({ ...COMMON_OPTS, weights: ["400", "700"] });
+  OleoScript.loadFont({ ...COMMON_OPTS, weights: ["400", "700"] });
+  Silkscreen.loadFont({ ...COMMON_OPTS, weights: ["400", "700"] });
+  BitcountGridDouble.loadFont({ ...COMMON_OPTS, weights: ["400"] });
+  Asimovian.loadFont({ ...COMMON_OPTS, weights: ["400"] });
+  Tagesschrift.loadFont({ ...COMMON_OPTS, weights: ["400"] });
+  StoryScript.loadFont({ ...COMMON_OPTS, weights: ["400"] });
 
-  Merriweather.loadFont(FONT_OPTIONS);
-
-  Anton.loadFont(FONT_OPTIONS);
-  Oswald.loadFont(FONT_OPTIONS);
-  AbrilFatface.loadFont(FONT_OPTIONS);
-
-  SpaceMono.loadFont(FONT_OPTIONS);
-  CourierPrime.loadFont(FONT_OPTIONS);
-  UbuntuMono.loadFont(FONT_OPTIONS);
-  Inconsolata.loadFont(FONT_OPTIONS);
-  AnonymousPro.loadFont(FONT_OPTIONS);
+  // Mono / Coding Fonts
+  RobotoMono.loadFont({ ...COMMON_OPTS, weights: ["400", "700"] });
+  SourceCodePro.loadFont({ ...COMMON_OPTS, weights: ["400", "700"] });
+  JetBrainsMono.loadFont({ ...COMMON_OPTS, weights: ["400", "700"] });
+  FiraCode.loadFont({ ...COMMON_OPTS, weights: ["400", "700"] });
+  IBMPlexMono.loadFont({ ...COMMON_OPTS, weights: ["400", "700"] });
+  SpaceMono.loadFont({ ...COMMON_OPTS, weights: ["400", "700"] });
+  CourierPrime.loadFont({ ...COMMON_OPTS, weights: ["400", "700"] });
+  UbuntuMono.loadFont({ ...COMMON_OPTS, weights: ["400", "700"] });
+  Inconsolata.loadFont({ ...COMMON_OPTS, weights: ["400", "700"] });
+  AnonymousPro.loadFont({ ...COMMON_OPTS, weights: ["400", "700"] });
 };
+
