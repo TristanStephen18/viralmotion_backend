@@ -6,10 +6,10 @@ import {
   useVideoConfig,
   Img,
 } from "remotion";
-import { loadFont } from "@remotion/google-fonts/CormorantGaramond";
+// import { loadFont } from "@remotion/google-fonts/CormorantGaramond";
 import { useCallback } from "react";
 
-const { fontFamily: defaultFontFamily } = loadFont();
+// const { fontFamily: defaultFontFamily } = loadFont();
 
 export const QuoteComposition: React.FC<{
   quote: string;
@@ -22,7 +22,7 @@ export const QuoteComposition: React.FC<{
   quote,
   author,
   backgroundImage,
-  fontFamily = defaultFontFamily,
+  fontFamily = "Arial, sans-serif",
   fontSize = 1,
   fontColor = "white",
 }) => {
