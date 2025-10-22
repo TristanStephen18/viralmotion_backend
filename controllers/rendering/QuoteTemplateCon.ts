@@ -149,6 +149,7 @@ export const handleExport = async (req: Request, res: Response) => {
 
     // 🧠 4. Render MP4 using Remotion
     await renderMedia({
+      timeoutInMilliseconds: 60000,
       serveUrl: bundleLocation,
       composition: comp,
       codec: "h264",
