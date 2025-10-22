@@ -19,6 +19,7 @@
     "@neondatabase/serverless": "^1.0.1",
     "@remotion/bundler": "^4.0.363",
     "@remotion/renderer": "^4.0.363",
+    "@sendgrid/mail": "^8.1.6",
     "@supabase/supabase-js": "^2.75.1",
     "@types/multer": "^2.0.0",
     "@types/uuid": "^10.0.0",
