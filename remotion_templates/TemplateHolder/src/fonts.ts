@@ -46,52 +46,60 @@ import * as AnonymousPro from "@remotion/google-fonts/AnonymousPro";
 
 // System fonts (Arial, Helvetica, etc.) don’t need loaders
 
+
+const FONT_OPTIONS = {
+  weights: ["400", "700"], // load only the main weights you actually use
+  subsets: ["latin"],      // usually all you need
+  display: "swap",         // optional, but helps with render consistency
+  ignoreTooManyRequestsWarning: true, // silence warning (optional)
+};
+
 // Load all Google Fonts used in fontOptions
 export const loadAllFonts = () => {
   // Already loaded fonts
-  PlayfairDisplay.loadFont();
-  Roboto.loadFont();
-  BebasNeue.loadFont();
-  RussoOne.loadFont();
-  LilitaOne.loadFont();
-  ChangaOne.loadFont();
-  ArchivoBlack.loadFont();
-  GravitasOne.loadFont();
-  Bungee.loadFont();
-  LuckiestGuy.loadFont();
-  AmaticSC.loadFont();
-  Satisfy.loadFont();
-  Pacifico.loadFont();
-  DancingScript.loadFont();
-  OleoScript.loadFont();
-  Silkscreen.loadFont();
-  KodeMono.loadFont();
-  Asimovian.loadFont();
-  Tagesschrift.loadFont();
-  StoryScript.loadFont();
-  BitcountGridDouble.loadFont();
+  PlayfairDisplay.loadFont(FONT_OPTIONS);
+  Roboto.loadFont(FONT_OPTIONS);
+  BebasNeue.loadFont(FONT_OPTIONS);
+  RussoOne.loadFont(FONT_OPTIONS);
+  LilitaOne.loadFont(FONT_OPTIONS);
+  ChangaOne.loadFont(FONT_OPTIONS);
+  ArchivoBlack.loadFont(FONT_OPTIONS);
+  GravitasOne.loadFont(FONT_OPTIONS);
+  Bungee.loadFont(FONT_OPTIONS);
+  LuckiestGuy.loadFont(FONT_OPTIONS);
+  AmaticSC.loadFont(FONT_OPTIONS);
+  Satisfy.loadFont(FONT_OPTIONS);
+  Pacifico.loadFont(FONT_OPTIONS);
+  DancingScript.loadFont(FONT_OPTIONS);
+  OleoScript.loadFont(FONT_OPTIONS);
+  Silkscreen.loadFont(FONT_OPTIONS);
+  KodeMono.loadFont(FONT_OPTIONS);
+  Asimovian.loadFont(FONT_OPTIONS);
+  Tagesschrift.loadFont(FONT_OPTIONS);
+  StoryScript.loadFont(FONT_OPTIONS);
+  BitcountGridDouble.loadFont(FONT_OPTIONS);
 
   // ✅ Newly added fonts
-  RobotoMono.loadFont();
-  SourceCodePro.loadFont();
-  JetBrainsMono.loadFont();
-  FiraCode.loadFont();
-  IBMPlexMono.loadFont();
+  RobotoMono.loadFont(FONT_OPTIONS);
+  SourceCodePro.loadFont(FONT_OPTIONS);
+  JetBrainsMono.loadFont(FONT_OPTIONS);
+  FiraCode.loadFont(FONT_OPTIONS);
+  IBMPlexMono.loadFont(FONT_OPTIONS);
 
-  Inter.loadFont();
-  Poppins.loadFont();
-  Montserrat.loadFont();
-  Raleway.loadFont();
+  Inter.loadFont(FONT_OPTIONS);
+  Poppins.loadFont(FONT_OPTIONS);
+  Montserrat.loadFont(FONT_OPTIONS);
+  Raleway.loadFont(FONT_OPTIONS);
 
-  Merriweather.loadFont();
+  Merriweather.loadFont(FONT_OPTIONS);
 
-  Anton.loadFont();
-  Oswald.loadFont();
-  AbrilFatface.loadFont();
+  Anton.loadFont(FONT_OPTIONS);
+  Oswald.loadFont(FONT_OPTIONS);
+  AbrilFatface.loadFont(FONT_OPTIONS);
 
-  SpaceMono.loadFont();
-  CourierPrime.loadFont();
-  UbuntuMono.loadFont();
-  Inconsolata.loadFont();
-  AnonymousPro.loadFont();
+  SpaceMono.loadFont(FONT_OPTIONS);
+  CourierPrime.loadFont(FONT_OPTIONS);
+  UbuntuMono.loadFont(FONT_OPTIONS);
+  Inconsolata.loadFont(FONT_OPTIONS);
+  AnonymousPro.loadFont(FONT_OPTIONS);
 };
