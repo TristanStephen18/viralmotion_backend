@@ -1,6 +1,6 @@
 import { registerRoot } from "remotion";
 import { RemotionRoot } from "./Root";
-import { loadAllFonts } from "./fonts";
+// import { loadAllFonts } from "./fonts";
 
-loadAllFonts();
+// loadAllFonts();
 registerRoot(RemotionRoot);
