@@ -48,7 +48,9 @@ const COMMON_OPTS = {
   subsets: ["latin"],
   display: "swap",
   ignoreTooManyRequestsWarning: true,
+  styles: ["normal"], 
 };
+
 
 // Helper: safely load fonts and avoid crashes
 const safeLoad = (fontModule: any, options: any) => {
