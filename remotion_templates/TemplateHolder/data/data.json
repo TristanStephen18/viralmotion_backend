@@ -1,0 +1,9 @@
+{
+  "content": "Your text",
+  "backgroundImage": "http://localhost:3000/bgimages/colors/bg1.jpg",
+  "fontFamily": "Russo",
+  "fontSize": 68,
+  "fontColor": "white",
+  "duration": 2,
+  "sound": "audios/keyboard1.mp3"
+}

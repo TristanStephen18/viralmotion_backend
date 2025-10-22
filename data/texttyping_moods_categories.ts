@@ -1,0 +1,42 @@
+export const CategoryOptions = [
+  "motivation",
+  "business",
+  "dreams",
+  "tech",
+  "design",
+  "mindfulness",
+  "creativity",
+  "growth",
+  "wisdom",
+  "innovation",
+  "passion",
+  "change",
+  "action",
+  "authenticity",
+  "simplicity",
+  "journey",
+  "resilience",
+  "possibility"
+];
+
+export const MoodOptions = [
+  "professional",
+  "hopeful",
+  "artistic",
+  "thoughtful",
+  "peaceful",
+  "empowering",
+  "challenging",
+  "iconic",
+  "bold",
+  "playful",
+  "authentic",
+  "direct",
+  "urgent",
+  "wise",
+  "minimalist",
+  "encouraging",
+  "balanced",
+  "practical",
+  "motivating"
+];

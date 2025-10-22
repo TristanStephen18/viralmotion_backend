@@ -1,0 +1,23 @@
+{
+  "language_code": "eng",
+  "segments": [
+    {
+      "text": "Hey it's Mariz, how are you today?",
+      "start_time": 0,
+      "end_time": 1.854688,
+      "speaker": {
+        "id": "person_1",
+        "name": "person 1"
+      }
+    },
+    {
+      "text": "Hey, this is Martha speaking. How can I help yuo?",
+      "start_time": 1.854688,
+      "end_time": 4.8065,
+      "speaker": {
+        "id": "person_2",
+        "name": "person 2"
+      }
+    }
+  ]
+}

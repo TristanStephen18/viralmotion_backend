@@ -1,0 +1,393 @@
+{
+  "story": "Talagang nilista niya lahat ng nagawa niya, hindi ba responsibilidad mo yan bilang magulang? Bakit tingin niya trabaho ung ginagawa niya sa mga anak niya? Eh responsibilidad niya yon, anak anak ka tapos isusumbat mo mga nagawa mo. Abnormal.",
+  "duration": 15.229375,
+  "words": [
+    {
+      "word": "Talagang",
+      "start": 0.099,
+      "end": 0.5
+    },
+    {
+      "word": " ",
+      "start": 0.5,
+      "end": 0.539
+    },
+    {
+      "word": "nilista",
+      "start": 0.539,
+      "end": 0.919
+    },
+    {
+      "word": " ",
+      "start": 0.919,
+      "end": 0.979
+    },
+    {
+      "word": "niya",
+      "start": 0.979,
+      "end": 1.079
+    },
+    {
+      "word": " ",
+      "start": 1.079,
+      "end": 1.139
+    },
+    {
+      "word": "lahat",
+      "start": 1.139,
+      "end": 1.339
+    },
+    {
+      "word": " ",
+      "start": 1.339,
+      "end": 1.36
+    },
+    {
+      "word": "ng",
+      "start": 1.36,
+      "end": 1.459
+    },
+    {
+      "word": " ",
+      "start": 1.459,
+      "end": 1.5
+    },
+    {
+      "word": "nagawa",
+      "start": 1.5,
+      "end": 1.839
+    },
+    {
+      "word": " ",
+      "start": 1.839,
+      "end": 1.939
+    },
+    {
+      "word": "niya,",
+      "start": 1.939,
+      "end": 2.039
+    },
+    {
+      "word": " ",
+      "start": 2.039,
+      "end": 2.659
+    },
+    {
+      "word": "hindi",
+      "start": 2.659,
+      "end": 2.879
+    },
+    {
+      "word": " ",
+      "start": 2.879,
+      "end": 2.939
+    },
+    {
+      "word": "ba",
+      "start": 2.939,
+      "end": 3.019
+    },
+    {
+      "word": " ",
+      "start": 3.019,
+      "end": 3.079
+    },
+    {
+      "word": "responsibilidad",
+      "start": 3.079,
+      "end": 3.959
+    },
+    {
+      "word": " ",
+      "start": 3.959,
+      "end": 3.98
+    },
+    {
+      "word": "mo",
+      "start": 3.98,
+      "end": 4.099
+    },
+    {
+      "word": " ",
+      "start": 4.099,
+      "end": 4.119
+    },
+    {
+      "word": "yan",
+      "start": 4.119,
+      "end": 4.299
+    },
+    {
+      "word": " ",
+      "start": 4.299,
+      "end": 4.38
+    },
+    {
+      "word": "bilang",
+      "start": 4.38,
+      "end": 4.639
+    },
+    {
+      "word": " ",
+      "start": 4.639,
+      "end": 4.679
+    },
+    {
+      "word": "magulang?",
+      "start": 4.679,
+      "end": 5.199
+    },
+    {
+      "word": " ",
+      "start": 5.199,
+      "end": 6.099
+    },
+    {
+      "word": "Bakit",
+      "start": 6.099,
+      "end": 6.419
+    },
+    {
+      "word": " ",
+      "start": 6.419,
+      "end": 6.44
+    },
+    {
+      "word": "tingin",
+      "start": 6.44,
+      "end": 6.659
+    },
+    {
+      "word": " ",
+      "start": 6.659,
+      "end": 6.699
+    },
+    {
+      "word": "niya",
+      "start": 6.699,
+      "end": 6.839
+    },
+    {
+      "word": " ",
+      "start": 6.839,
+      "end": 6.879
+    },
+    {
+      "word": "trabaho",
+      "start": 6.879,
+      "end": 7.299
+    },
+    {
+      "word": " ",
+      "start": 7.299,
+      "end": 7.319
+    },
+    {
+      "word": "ung",
+      "start": 7.319,
+      "end": 7.44
+    },
+    {
+      "word": " ",
+      "start": 7.44,
+      "end": 7.46
+    },
+    {
+      "word": "ginagawa",
+      "start": 7.46,
+      "end": 7.939
+    },
+    {
+      "word": " ",
+      "start": 7.939,
+      "end": 7.98
+    },
+    {
+      "word": "niya",
+      "start": 7.98,
+      "end": 8.119
+    },
+    {
+      "word": " ",
+      "start": 8.119,
+      "end": 8.159
+    },
+    {
+      "word": "sa",
+      "start": 8.159,
+      "end": 8.22
+    },
+    {
+      "word": " ",
+      "start": 8.22,
+      "end": 8.26
+    },
+    {
+      "word": "mga",
+      "start": 8.26,
+      "end": 8.42
+    },
+    {
+      "word": " ",
+      "start": 8.42,
+      "end": 8.479
+    },
+    {
+      "word": "anak",
+      "start": 8.479,
+      "end": 8.72
+    },
+    {
+      "word": " ",
+      "start": 8.72,
+      "end": 8.819
+    },
+    {
+      "word": "niya?",
+      "start": 8.819,
+      "end": 9.019
+    },
+    {
+      "word": " ",
+      "start": 9.019,
+      "end": 9.939
+    },
+    {
+      "word": "Eh",
+      "start": 9.939,
+      "end": 10.079
+    },
+    {
+      "word": " ",
+      "start": 10.079,
+      "end": 10.159
+    },
+    {
+      "word": "responsibilidad",
+      "start": 10.159,
+      "end": 10.96
+    },
+    {
+      "word": " ",
+      "start": 10.96,
+      "end": 11
+    },
+    {
+      "word": "niya",
+      "start": 11,
+      "end": 11.099
+    },
+    {
+      "word": " ",
+      "start": 11.099,
+      "end": 11.159
+    },
+    {
+      "word": "yon,",
+      "start": 11.159,
+      "end": 11.38
+    },
+    {
+      "word": " ",
+      "start": 11.38,
+      "end": 11.679
+    },
+    {
+      "word": "anak",
+      "start": 11.679,
+      "end": 11.86
+    },
+    {
+      "word": " ",
+      "start": 11.86,
+      "end": 11.92
+    },
+    {
+      "word": "anak",
+      "start": 11.92,
+      "end": 12.119
+    },
+    {
+      "word": " ",
+      "start": 12.119,
+      "end": 12.139
+    },
+    {
+      "word": "ka",
+      "start": 12.139,
+      "end": 12.239
+    },
+    {
+      "word": " ",
+      "start": 12.239,
+      "end": 12.319
+    },
+    {
+      "word": "tapos",
+      "start": 12.319,
+      "end": 12.619
+    },
+    {
+      "word": " ",
+      "start": 12.619,
+      "end": 12.659
+    },
+    {
+      "word": "isusumbat",
+      "start": 12.659,
+      "end": 13.179
+    },
+    {
+      "word": " ",
+      "start": 13.179,
+      "end": 13.219
+    },
+    {
+      "word": "mo",
+      "start": 13.219,
+      "end": 13.299
+    },
+    {
+      "word": " ",
+      "start": 13.299,
+      "end": 13.34
+    },
+    {
+      "word": "mga",
+      "start": 13.34,
+      "end": 13.5
+    },
+    {
+      "word": " ",
+      "start": 13.5,
+      "end": 13.539
+    },
+    {
+      "word": "nagawa",
+      "start": 13.539,
+      "end": 13.859
+    },
+    {
+      "word": " ",
+      "start": 13.859,
+      "end": 13.96
+    },
+    {
+      "word": "mo.",
+      "start": 13.96,
+      "end": 14.099
+    },
+    {
+      "word": " ",
+      "start": 14.099,
+      "end": 14.259
+    },
+    {
+      "word": "Abnormal.",
+      "start": 14.259,
+      "end": 14.859
+    }
+  ],
+  "title": "Talagang nilista niya lahat ng nagawa niya, hindi ba responsibilidad mo yan bilang magulang?",
+  "text": "Bakit tingin niya trabaho ung ginagawa niya sa mga anak niya? Eh responsibilidad niya yon, anak anak ka tapos isusumbat mo mga nagawa mo. Abnormal."
+}

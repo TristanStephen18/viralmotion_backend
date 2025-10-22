@@ -1,0 +1,19 @@
+{
+  "chatPath": "chats.json",
+  "bgVideo": "https://res.cloudinary.com/dnxc1lw18/video/upload/v1760964769/ss4_yvpblt.mp4",
+  "chatAudio": "https://rsnemknhybirnaxoffur.supabase.co/storage/v1/object/public/Remotion%20Web%20App%20file%20bucket/audios/fakeconvo/fakeconvo-1761133080579.mp3",
+  "musicAudio": "https://rsnemknhybirnaxoffur.supabase.co/storage/v1/object/public/Remotion%20Web%20App%20file%20bucket/bgmusics/bg10.mp3",
+  "musicBase": 0.12,
+  "musicWhileTalking": 0.06,
+  "duckAttackMs": 120,
+  "duckReleaseMs": 240,
+  "timeShiftSec": 0,
+  "fontFamily": "Inter, sans-serif",
+  "fontSize": 28,
+  "fontColor": "",
+  "chatTheme": "discord",
+  "avatars": {
+    "left": "https://res.cloudinary.com/dnxc1lw18/image/upload/v1760977048/v7_njhvnm.avif",
+    "right": "https://res.cloudinary.com/dnxc1lw18/image/upload/v1760977048/v10_lzbfv0.jpg"
+  }
+}

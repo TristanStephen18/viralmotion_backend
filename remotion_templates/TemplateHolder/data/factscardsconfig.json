@@ -1,0 +1,140 @@
+{
+  "intro": {
+    "title": "Interesting Facts",
+    "subtitle": "A collection of diverse and fascinating facts."
+  },
+  "outro": {
+    "title": "Interesting Facts",
+    "subtitle": "A collection of diverse and fascinating facts."
+  },
+  "facts": [
+    {
+      "title": "Honey Never Spoils",
+      "description": "Honey never spoils — archaeologists found edible honey in ancient Egyptian tombs."
+    },
+    {
+      "title": "Octopus Anatomy",
+      "description": "Octopuses have three hearts and blue blood."
+    },
+    {
+      "title": "Venus's Day and Year",
+      "description": "A day on Venus is longer than a year on Venus."
+    },
+    {
+      "title": "Canada's Coastline",
+      "description": "Canada has the longest coastline of any country in the world."
+    },
+    {
+      "title": "Shortest War",
+      "description": "The shortest war in history lasted 38–45 minutes (Anglo-Zanzibar War, 1896)."
+    },
+    {
+      "title": "Word 'Set'",
+      "description": "The word 'set' has one of the highest numbers of distinct meanings in English."
+    },
+    {
+      "title": "Flamingo Groups",
+      "description": "A group of flamingos is called a 'flamboyance'."
+    },
+    {
+      "title": "Tomatoes in Europe",
+      "description": "Tomatoes were once considered poisonous in Europe for centuries."
+    },
+    {
+      "title": "First Computer Bug",
+      "description": "The first computer bug was an actual moth found in a Harvard computer in 1947."
+    },
+    {
+      "title": "Absolute Zero",
+      "description": "Absolute zero (0 K) is the theoretical temperature where particles have minimal vibrational motion."
+    },
+    {
+      "title": "Bananas and Berries",
+      "description": "Bananas are berries, while strawberries are not true berries."
+    },
+    {
+      "title": "Bone Remodeling",
+      "description": "Bones are constantly being remodeled; every 7–10 years many bones are replaced at the cellular level."
+    },
+    {
+      "title": "Nintendo's Origin",
+      "description": "Nintendo started in 1889 as a Japanese playing-card company."
+    },
+    {
+      "title": "Modern Olympics",
+      "description": "The modern Olympic Games were revived in 1896 in Athens, Greece."
+    },
+    {
+      "title": "Largest Deserts",
+      "description": "The world's largest hot desert is the Sahara, but Antarctica is the largest cold desert."
+    },
+    {
+      "title": "Shortest Song",
+      "description": "The shortest commercially released song is 'You Suffer' by Napalm Death — 1.316 seconds."
+    },
+    {
+      "title": "Fastest Growing Plants",
+      "description": "Bamboo can be one of the fastest-growing plants — some species grow over 90 cm (35 in) per day."
+    },
+    {
+      "title": "Serial Position Effect",
+      "description": "Humans are more likely to remember the first and last items in a list (the serial position effect)."
+    },
+    {
+      "title": "Chocolate as Currency",
+      "description": "Chocolate was used as currency by the ancient Aztecs."
+    },
+    {
+      "title": "First Passenger Railway",
+      "description": "The world's first passenger railway opened in 1825 between Stockton and Darlington in England."
+    },
+    {
+      "title": "Water Expansion",
+      "description": "Water expands when it freezes, which is why ice floats."
+    },
+    {
+      "title": "Neutron Star Density",
+      "description": "Neutron stars are so dense that a teaspoon of their material would weigh billions of tons on Earth."
+    },
+    {
+      "title": "Symbol of Peace",
+      "description": "The white dove became a symbol of peace in modern times after Picasso's lithograph in 1949."
+    },
+    {
+      "title": "First High-Level Language",
+      "description": "The first high-level programming language often considered 'Fortran' was released in the 1950s."
+    },
+    {
+      "title": "Elephants Can't Jump",
+      "description": "Elephants are the only mammals that can't jump."
+    },
+    {
+      "title": "Number of Languages",
+      "description": "There are about 7,000 languages spoken in the world today."
+    },
+    {
+      "title": "Apple Tree Fruiting",
+      "description": "Apple trees can take 4–5 years to produce their first fruit from seed."
+    },
+    {
+      "title": "Great Wall of China",
+      "description": "The Great Wall of China is not a single continuous wall — it's a series of walls and fortifications built over centuries."
+    },
+    {
+      "title": "Microwave Oven Invention",
+      "description": "The microwave oven was invented accidentally after engineer Percy Spencer noticed a chocolate bar melted in his pocket near radar equipment."
+    },
+    {
+      "title": "Cleopatra Timeline",
+      "description": "Cleopatra lived closer in time to the Moon landing (1969) than to the construction of the Great Pyramid of Giza."
+    }
+  ],
+  "backgroundImage": "https://pixabay.com/get/g9c7d2eba9a4c34d80639bbb373f30a82f06d052514973a6cdbec1393829124d84fe8f18b386db38c8625b65a8bbf71f8_640.jpg",
+  "fontSizeTitle": 68,
+  "fontSizeSubtitle": 49,
+  "fontFamilyTitle": "Arial, sans-serif",
+  "fontColorTitle": "white",
+  "fontColorSubtitle": "white",
+  "fontFamilySubtitle": "Arial, sans-serif",
+  "duration": 128
+}

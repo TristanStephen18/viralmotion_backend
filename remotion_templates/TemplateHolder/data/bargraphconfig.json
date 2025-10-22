@@ -1,0 +1,39 @@
+{
+  "data": [
+    {
+      "name": "2020",
+      "value": 15000
+    },
+    {
+      "name": "2021",
+      "value": 18000
+    },
+    {
+      "name": "2022",
+      "value": 21000
+    },
+    {
+      "name": "2023",
+      "value": 25000
+    },
+    {
+      "name": "2024",
+      "value": 30000
+    }
+  ],
+  "title": "Annual Revenue Over Years",
+  "titleFontColor": "white",
+  "backgroundImage": "https://res.cloudinary.com/dnxc1lw18/image/upload/v1760979564/bg12_z53lpr.jpg",
+  "accent": "#3B82F6",
+  "subtitle": "A record of revenue figures from 2020 to 2024",
+  "currency": "",
+  "titleFontSize": 78,
+  "subtitleFontSize": 48,
+  "subtitleColor": "white",
+  "barHeight": 100,
+  "barGap": 36,
+  "barLabelFontSize": 36,
+  "barValueFontSize": 36,
+  "fontFamily": "Kode Mono, monospace",
+  "duration": 8
+}
