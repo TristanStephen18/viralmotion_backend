@@ -68,7 +68,7 @@ router.get("/verify", async (req, res) => {
       .set({ verified: true })
       .where(eq(users.id, decoded.userId));
 
-    res.redirect("http://localhost:5173/login?verified=true");
+    res.redirect("https://remotion-web-application.vercel.app/login?verified=true");
   } catch (err) {
     console.error("Verification error:", err);
     res.status(400).json({ error: "Invalid or expired token" });
