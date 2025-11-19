@@ -25,6 +25,16 @@ export const handleExport = async (req: Request, res: Response) => {
     const composition = await selectComposition({
       serveUrl: bundleLocation,
       id: compositionId,
+      onBrowserDownload: () => {
+        console.log("A compatible browser is being downloaded...");
+        // You can return an object here to observe the download progress
+        return {
+          onProgress: ({ percent }) => {
+            console.log(`${Math.round(percent * 100)}% downloaded`);
+          },
+          version: "recommended"
+        };
+      },
       inputProps,
     });
 
@@ -41,6 +51,7 @@ export const handleExport = async (req: Request, res: Response) => {
       codec: "h264",
       outputLocation: mp4Path,
       inputProps,
+      concurrency: 1,
     });
 
     console.log("✅ Render complete.");

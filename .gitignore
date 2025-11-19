@@ -1,2 +1,3 @@
 node_modules
 remotion_templates/TemplateHolder/node_modules
+.env

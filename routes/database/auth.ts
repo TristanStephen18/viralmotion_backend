@@ -314,5 +314,32 @@ router.post("/verify-otp", async (req, res) => {
   }
 });
 
+router.post("/google-login", async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email ) {
+      return res.status(400).json({ error: "Missing email" });
+    }
+
+    const [user] = await db.select().from(users).where(eq(users.email, email));
+    if (!user) {
+      return res.status(400).json({ error: "Invalid credentials" });
+    }
+
+    const token = jwt.sign({ userId: user.id }, JWT_SECRET, {
+      expiresIn: JWT_EXPIRES_IN,
+    });
+
+    res.json({
+      message: "Login successful",
+      token,
+      user: { id: user.id, email: user.email, name: user.name },
+    });
+  } catch (err) {
+    console.error("Login error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 
 export default router;

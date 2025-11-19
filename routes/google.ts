@@ -19,7 +19,7 @@ passport.use(
     {
       clientID: GOOGLE_CLIENT_ID,
       clientSecret: GOOGLE_CLIENT_SECRET,
-      callbackURL: "https://localhost:4000/authenticate/google/callback",
+      callbackURL: "http://localhost:3000/authenticate/google/callback",
     },
     async (
       accessToken: string,

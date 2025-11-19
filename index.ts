@@ -16,12 +16,25 @@ import GoogleRoutes from './routes/google.ts';
 import cors from "cors";
 import fs from "fs";
 import { distentry, entry, entry2 } from "./controllers/entrypoint.ts";
+import session from 'express-session';
+import passport from 'passport';
 
 const app = express();
 app.use(cors({ origin: "*" }));
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+app.use(
+  session({
+    secret: process.env.SESSION_SECRET || "supersecret",
+    resave: false,
+    saveUninitialized: false,
+  })
+);
+
+app.use(passport.initialize());
+app.use(passport.session());
 // dotenv.config();
 // const geminiapi = process.env.GEMINI_API_KEY!;
 
