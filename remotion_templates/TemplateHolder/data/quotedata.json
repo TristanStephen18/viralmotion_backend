@@ -1,8 +1,8 @@
 {
-  "quote": "Just remember, when someone has an accent, it means that he knows one more language than you do.",
-  "author": "Sidney Sheldon",
-  "backgroundImage": "https://pixabay.com/get/g81597c21a08a23b5942f30fba6a33135d641e1df8e06fd859f1c7a5b4375e3d8f21b3cd78cec1e0ac78be7a2f15113fb_640.jpg",
-  "fontFamily": "'Playfair Display', serif",
-  "fontSize": 0.75,
+  "quote": "Your Quote",
+  "author": "Author",
+  "backgroundImage": "https://pixabay.com/get/g06e7184ab9074e889094b26168b88c8b830c1e9575f7e1da2bd13ee60a28e008f294d4140cf92479d701b1d9233f7be8ce592276e1e49b0cd8be038db500451c_640.jpg",
+  "fontFamily": "Arial, sans-serif",
+  "fontSize": 1,
   "fontColor": "white"
 }

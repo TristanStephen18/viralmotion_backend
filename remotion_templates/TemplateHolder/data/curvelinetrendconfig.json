@@ -1,35 +1,55 @@
 {
-  "title": "Yearly Revenue",
-  "subtitle": "Revenue trend over the years",
+  "title": "Revenue Growth",
+  "subtitle": "2015–2024 • Journey",
   "titleFontSize": 50,
   "subtitleFontSize": 30,
   "fontFamily": "Arial, sans-serif",
   "data": [
     {
+      "label": 2015,
+      "value": 100
+    },
+    {
+      "label": 2016,
+      "value": 150
+    },
+    {
+      "label": 2017,
+      "value": 300
+    },
+    {
+      "label": 2018,
+      "value": 200
+    },
+    {
+      "label": 2019,
+      "value": 250
+    },
+    {
       "label": 2020,
-      "value": 15000
+      "value": 400
     },
     {
       "label": 2021,
-      "value": 18000
+      "value": 550
     },
     {
       "label": 2022,
-      "value": 21000
+      "value": 450
     },
     {
       "label": 2023,
-      "value": 25000
+      "value": 600
     },
     {
       "label": 2024,
-      "value": 30000
+      "value": 750
     }
   ],
-  "dataType": "number",
-  "preset": "dark",
+  "dataType": "$",
+  "preset": "corporate",
   "backgroundImage": "",
-  "animationSpeed": "fast",
+  "animationSpeed": "normal",
   "minimalMode": false,
-  "duration": 8
+  "duration": 13
 }

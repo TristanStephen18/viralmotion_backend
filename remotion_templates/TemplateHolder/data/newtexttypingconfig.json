@@ -1,13 +1,13 @@
 {
   "phrase": {
     "lines": [
-      "Life is like riding a bicycle. To keep your balance, you must keep moving.",
-      "Albert Einstein"
+      "Dream big, start small",
+      "but start today"
     ],
-    "category": "growth",
-    "mood": "wise"
+    "category": "wisdom",
+    "mood": "iconic"
   },
-  "backgroundIndex": 2,
-  "fontIndex": 0,
+  "backgroundIndex": 10,
+  "fontIndex": 1,
   "audioIndex": 1
 }

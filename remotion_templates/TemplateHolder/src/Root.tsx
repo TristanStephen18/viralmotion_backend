@@ -10,7 +10,7 @@ import { SplitScreen } from "./components/SplitScreen";
 import { TypingVideo } from "./components/TexttypingTemplate/TypingVideo";
 import typingdata from "../data/data.json";
 import { QuoteComposition } from "./components/QuoteTemplate";
-import quoteData from "../data/quotedata.json";
+// import quoteData from "../data/quotedata.json";
 // import SecondFlipCards from "./components/KpiFlipCardsTemplate";
 import FlipCardData from "../data/flipcardsdata.json";
 import KpiFlipCards from "./components/KpiFlipCardsTemplate";
@@ -31,10 +31,32 @@ import curveLineTrendProps from "../data/curvelinetrendconfig.json";
 import { NewTypingAnimation } from "./components/NewTextTyping/TypingAnimation";
 import { calculateDuration, durationIndicatorQuote } from "./helpers";
 import newtexttypingconfigs from "../data/newtexttypingconfig.json";
+import KineticTypographyIntro, {
+  TypographyConfig,
+} from "./components/KineticText";
 // import { duration } from '@mui/material';
 
-
 type Derived = React.ComponentProps<typeof ChatVideo3>;
+
+const defaultConfig: TypographyConfig = {
+  id: "default-kinetic-v1",
+  words: ["KINETIC", "TYPOGRAPHY"],
+  colors: {
+    primary: "#00f2ff",
+    secondary: "#ff4fa3",
+    accent: "#ffffff",
+  },
+  timing: {
+    staggerDelay: 5,
+    collisionFrame: 45,
+    explosionDelay: 20,
+  },
+  effects: {
+    shakeIntensity: 12,
+    particleCount: 70,
+    ballSize: 120,
+  },
+};
 
 type RootProps = Derived & {
   chatPath?: string;
@@ -51,7 +73,6 @@ const WIDTH = 1080;
 const HEIGHT = 1920;
 const FPS = 30;
 const TAIL_PADDING_SEC = 1.0;
-
 
 export const RemotionRoot: React.FC = () => {
   const fps = 30;
@@ -116,20 +137,28 @@ export const RemotionRoot: React.FC = () => {
       <Composition
         id="QuoteComposition"
         component={QuoteComposition}
-        durationInFrames={durationIndicatorQuote(quoteData.quote.length) * 30}
+        durationInFrames={1} // placeholder, gets overridden ✔️
         fps={30}
         height={1920}
         width={1080}
-        // Using external URL
         defaultProps={{
-          quote: quoteData.quote,
-          author: quoteData.author,
-          backgroundImage: quoteData.backgroundImage,
-          fontFamily: quoteData.fontFamily,
-          fontSize: quoteData.fontSize,
-          fontColor: quoteData.fontColor,
+          quote: "Sample",
+          author: "sample",
+          backgroundImage:
+            "https://res.cloudinary.com/dnxc1lw18/image/upload/v1760979566/bg11_deliyh.jpg",
+          fontFamily: "Arial, sans-serif",
+          fontSize: 1,
+          fontColor: "white",
+        }}
+        calculateMetadata={async ({ props }) => {
+          const durationSeconds = durationIndicatorQuote(props.quote.length);
+          return {
+            props,
+            durationInFrames: durationSeconds * 30,
+          };
         }}
       />
+
       <Composition
         id="KpiFlipCard"
         component={KpiFlipCards}
@@ -297,6 +326,17 @@ export const RemotionRoot: React.FC = () => {
           backgroundIndex: newtexttypingconfigs.backgroundIndex, // Ambient Flow
           audioIndex: newtexttypingconfigs.audioIndex, // Soft Keys
         }}
+      />
+      <Composition
+        id="KineticText"
+        component={KineticTypographyIntro}
+        fps={30}
+        defaultProps={{
+          config: defaultConfig,
+        }}
+        width={1080}
+        height={1920}
+        durationInFrames={240}
       />
     </>
   );

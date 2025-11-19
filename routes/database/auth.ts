@@ -35,7 +35,6 @@ router.post("/signup", async (req, res) => {
         name,
         passwordHash,
         provider: "local",
-        providerId: "",
         profilePicture: "https://res.cloudinary.com/dnxc1lw18/image/upload/v1761048476/pfp_yitfgl.jpg",
         verified: false,
       })

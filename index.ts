@@ -11,6 +11,8 @@ import pixabayroutes from "./routes/apis/pixabay.ts";
 import rendersroutes from "./routes/database/renders.ts";
 import datasetsdbupload from "./routes/database/datasetsupload.ts";
 import getDatasetFronUploadsroute from "./routes/apis/fromuploadsextraction.ts";
+import GoogleRoutes from './routes/google.ts';
+// import mainRenderingRoute from ""
 import cors from "cors";
 import fs from "fs";
 import { distentry, entry, entry2 } from "./controllers/entrypoint.ts";
@@ -39,6 +41,7 @@ app.use("/pixabay", pixabayroutes);
 app.use("/renders", rendersroutes);
 app.use("/datasets", datasetsdbupload);
 app.use("/fromuploadsdataset", getDatasetFronUploadsroute);
+app.use("/authenticate", GoogleRoutes);
 
 app.listen(3000, "0.0.0.0", () => {
   // console.log(__dirname);

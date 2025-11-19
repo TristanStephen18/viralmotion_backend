@@ -1,5 +1,5 @@
 import { bundle } from "@remotion/bundler";
-import { getCompositions, renderMedia } from "@remotion/renderer";
+import { getCompositions, renderMedia, selectComposition } from "@remotion/renderer";
 import path from "path";
 import { updateJsonfile_QuoteData } from "../functions/jsonupdater.ts";
 import fs from "fs";
@@ -119,26 +119,37 @@ export const handleExport = async (req: Request, res: Response) => {
     format,
   });
 
-  updateJsonfile_QuoteData(
+  const inputProps = {
     quote,
     author,
-    imageurl,
-    fontfamily,
-    fontsize,
-    fontcolor
-  );
+    backgroundImage: imageurl,
+    fontColor: fontcolor,
+    fontFamily: fontfamily,
+    fontSize: fontsize,
+  };
 
   try {
     if (!fs.existsSync(entry)) {
       return res.status(404).json({ error: "Remotion entry file not found" });
     }
 
-    const bundleLocation = await bundle(entry);
+    const bundleLocation = await bundle({
+      entryPoint: path.resolve(entry),
+      webpackOverride: (config) => config,
+    });
+
+
     const comps = await getCompositions(bundleLocation);
     const comp = comps.find((c) => c.id === "QuoteComposition");
     if (!comp) {
       return res.status(404).json({ error: "Composition not found" });
     }
+
+    const composition = await selectComposition({
+      serveUrl: bundleLocation,
+      id: "QuoteComposition",
+      inputProps
+    })
 
     // 🗂️ 3. Temporary file paths
     const tmpBaseName = `quotespotlight-${Date.now()}`;
@@ -149,11 +160,11 @@ export const handleExport = async (req: Request, res: Response) => {
 
     // 🧠 4. Render MP4 using Remotion
     await renderMedia({
-      timeoutInMilliseconds: 300000,
       serveUrl: bundleLocation,
-      composition: comp,
+      composition,
       codec: "h264",
       outputLocation: mp4Path,
+      inputProps,
     });
 
     console.log("✅ Render complete.");

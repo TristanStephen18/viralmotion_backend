@@ -1,9 +1,10 @@
-import { templatedata } from "../../data/templatesdata.ts";
+import { additionaltemplates } from "../../data/addedtemplatesprops.ts";
+// import { templatedata } from "../../data/templatesdata.ts";
 import { db } from "../../db/client.ts";
 import { templates } from "../../db/schema.ts";
 
 async function seedTemplates() {
-  await db.insert(templates).values(templatedata);
+  await db.insert(templates).values(additionaltemplates);
   console.log("✅ Templates seeded!");
 }
 

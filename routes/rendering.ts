@@ -11,6 +11,7 @@ import * as RedditController from "../controllers/rendering/RedditNarrationCon.t
 import * as StoryTellingController from "../controllers/rendering/StoryTellingCon.ts";
 import * as CurveLineTrendController from "../controllers/rendering/CurveLineTrendCon.ts";
 import * as NewTexttypingController from "../controllers/rendering/NewTextTypingCon.ts";
+import * as MainRenderingController from "../controllers/rendering/RenderingCon.ts";
 
 const router = Router();
 
@@ -36,6 +37,8 @@ router.post("/redditvideo", RedditController.handleExport);
 router.post("/storytelling", StoryTellingController.handleExport);
 
 router.post("/curvelinetrend", CurveLineTrendController.handleExport);
+
+router.post('/render-video', MainRenderingController.handleExport);
 
 router.get("/health", (req, res) => {
   res.json({

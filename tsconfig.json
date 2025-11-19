@@ -5,7 +5,8 @@
     "moduleResolution": "nodenext",
     "esModuleInterop": true,
     "resolveJsonModule": true,
-    "types": ["node"],
+    "typeRoots": ["./types"],
+    "types": ["node", "passport"],
     "allowImportingTsExtensions": true,
     "emitDeclarationOnly": true,
     "declaration": true
