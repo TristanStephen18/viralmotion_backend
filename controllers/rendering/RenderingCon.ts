@@ -13,6 +13,8 @@ export const handleExport = async (req: Request, res: Response) => {
 
   console.log("Receive Props: ", inputProps);
 
+  const chromiumPath = "/usr/bin/chromium";
+
   try {
     if (!fs.existsSync(entry)) {
       return res.status(404).json({ error: "Remotion entry file not found" });
@@ -25,16 +27,7 @@ export const handleExport = async (req: Request, res: Response) => {
     const composition = await selectComposition({
       serveUrl: bundleLocation,
       id: compositionId,
-      onBrowserDownload: () => {
-        console.log("A compatible browser is being downloaded...");
-        // You can return an object here to observe the download progress
-        return {
-          onProgress: ({ percent }) => {
-            console.log(`${Math.round(percent * 100)}% downloaded`);
-          },
-          version: "recommended"
-        };
-      },
+      browserExecutable: chromiumPath,
       inputProps,
     });
 
@@ -52,6 +45,7 @@ export const handleExport = async (req: Request, res: Response) => {
       outputLocation: mp4Path,
       inputProps,
       concurrency: 1,
+      browserExecutable: chromiumPath
     });
 
     console.log("✅ Render complete.");

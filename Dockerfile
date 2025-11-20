@@ -2,8 +2,9 @@ FROM node:22-slim
 
 WORKDIR /app
 
-# Install Chrome dependencies
+# Install Chrome + dependencies
 RUN apt-get update && apt-get install -y \
+  chromium \
   fonts-liberation \
   libasound2 \
   libatk-bridge2.0-0 \
@@ -29,13 +30,15 @@ RUN apt-get update && apt-get install -y \
   xdg-utils \
   && rm -rf /var/lib/apt/lists/*
 
-COPY package*.json ./
+# Show Chromium version (debug)
+RUN chromium --version || echo "Chromium not found"
 
+COPY package*.json ./
 RUN npm install
 
 COPY . .
 
-# Build your Remotion project
+# Build Remotion bundles
 RUN cd remotion_templates/TemplateHolder && npm install && cd ../.. && npm run build
 
 EXPOSE 10000
