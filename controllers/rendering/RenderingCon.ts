@@ -97,6 +97,7 @@ export const handleExport = async (req: Request, res: Response) => {
       format: finalFormat,
     });
   } catch (error: any) {
+    console.log(error.message);
     res.status(404).json({ message: "Error rendering video" });
   }
 };
