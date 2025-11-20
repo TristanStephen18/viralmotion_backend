@@ -13,8 +13,6 @@ export const handleExport = async (req: Request, res: Response) => {
 
   console.log("Receive Props: ", inputProps);
 
-  const BROWSER = "/usr/local/bin/chrome-headless-shell";
-
   try {
     if (!fs.existsSync(entry)) {
       return res.status(404).json({ error: "Remotion entry file not found" });
@@ -27,7 +25,16 @@ export const handleExport = async (req: Request, res: Response) => {
     const composition = await selectComposition({
       serveUrl: bundleLocation,
       id: compositionId,
-      browserExecutable: BROWSER,
+      onBrowserDownload: () => {
+        console.log("A compatible browser is being downloaded...");
+        // You can return an object here to observe the download progress
+        return {
+          onProgress: ({ percent }) => {
+            console.log(`${Math.round(percent * 100)}% downloaded`);
+          },
+          version: "recommended"
+        };
+      },
       inputProps,
     });
 
@@ -45,7 +52,6 @@ export const handleExport = async (req: Request, res: Response) => {
       outputLocation: mp4Path,
       inputProps,
       concurrency: 1,
-      browserExecutable: BROWSER
     });
 
     console.log("✅ Render complete.");
@@ -97,7 +103,6 @@ export const handleExport = async (req: Request, res: Response) => {
       format: finalFormat,
     });
   } catch (error: any) {
-    console.log(error.message);
     res.status(404).json({ message: "Error rendering video" });
   }
 };
