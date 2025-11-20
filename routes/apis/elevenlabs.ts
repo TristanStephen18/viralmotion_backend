@@ -1,6 +1,6 @@
 // src/server.ts
 import { Router } from "express";
-import { ElevenLabsClient } from "elevenlabs";
+import { ElevenLabsClient } from "@elevenlabs/elevenlabs-js";
 import * as dotenv from "dotenv";
 import fs from "fs";
 import path from "path";
@@ -18,16 +18,22 @@ dotenv.config();
 const router = Router();
 
 const elevenLabs = new ElevenLabsClient({
-  apiKey: process.env.ELEVEN_LABS_API_KEY!,
+  apiKey: process.env.ELEVEN_LABS_API_KEY,
 });
 
-async function streamToBuffer(stream: Readable): Promise<Buffer> {
-  const chunks: Buffer[] = [];
-  for await (const chunk of stream) {
-    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+async function webStreamToBuffer(webStream: ReadableStream<Uint8Array>): Promise<Buffer> {
+  const reader = webStream.getReader();
+  const chunks: Uint8Array[] = [];
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
   }
-  return Buffer.concat(chunks);
+
+  return Buffer.concat(chunks.map((c) => Buffer.from(c)));
 }
+
 
 async function uploadToSupabase(filePath: string, remotePath: string) {
   const fileBuffer = fs.readFileSync(filePath);
@@ -49,7 +55,6 @@ async function uploadToSupabase(filePath: string, remotePath: string) {
 
   return publicUrlData.publicUrl;
 }
-
 
 router.post("/test-generate", async (req, res) => {
   console.log(req.body.chats);
@@ -94,17 +99,21 @@ router.post("/test-generate", async (req, res) => {
         preview: text.slice(0, 80),
       });
 
-      const audioStream = await elevenLabs.generate({
-        voice: voiceId,
-        model_id: "eleven_multilingual_v2",
+      const audioStream = await elevenLabs.textToSpeech.convert(
+        voiceId,
+        {
+        modelId: "eleven_multilingual_v2",
         text,
       });
 
-      const buffer = await streamToBuffer(audioStream as Readable);
+      const buffer = await webStreamToBuffer(audioStream);
       audioBuffers.push(buffer);
 
       // Temporary file to get duration
-      const tmpFile = path.join(os.tmpdir(), `utterance-${i}-${Date.now()}.mp3`);
+      const tmpFile = path.join(
+        os.tmpdir(),
+        `utterance-${i}-${Date.now()}.mp3`
+      );
       fs.writeFileSync(tmpFile, buffer);
       const dur = await getAudioDurationInSeconds(tmpFile);
       fs.unlinkSync(tmpFile); // cleanup temp file
@@ -178,7 +187,6 @@ router.post("/test-generate", async (req, res) => {
   }
 });
 
-
 router.post("/reddit", async (req, res) => {
   console.log("template updating");
   try {
@@ -202,14 +210,15 @@ router.post("/reddit", async (req, res) => {
     });
 
     // 🔊 Generate TTS from ElevenLabs
-    const audioStream = await elevenLabs.generate({
-      voice: voiceid,
-      model_id: "eleven_multilingual_v2",
+    const audioStream = await elevenLabs.textToSpeech.convert(
+      voiceid,
+      {
+      modelId: "eleven_multilingual_v2",
       text: story,
     });
 
     // Convert stream → buffer
-    const buffer = await streamToBuffer(audioStream as Readable);
+    const buffer = await webStreamToBuffer(audioStream);
 
     // 🔼 Upload to Supabase directly (no local save)
     const fileName = `reddit-${Date.now()}.mp3`;
@@ -292,14 +301,15 @@ router.post("/story", async (req, res) => {
     });
 
     // 🔊 Generate TTS from ElevenLabs
-    const audioStream = await elevenLabs.generate({
-      voice: voiceid,
-      model_id: "eleven_multilingual_v2",
+    const audioStream = await elevenLabs.textToSpeech.convert(
+      voiceid,
+      {
+      modelId: "eleven_multilingual_v2",
       text: content,
     });
 
     // Convert stream → buffer
-    const buffer = await streamToBuffer(audioStream as Readable);
+    const buffer = await webStreamToBuffer(audioStream);
 
     // 📦 Upload directly to Supabase
     const fileName = `story-${Date.now()}.mp3`;
