@@ -13,7 +13,7 @@ export const handleExport = async (req: Request, res: Response) => {
 
   console.log("Receive Props: ", inputProps);
 
-  const chromiumPath = "/usr/bin/chromium";
+  const BROWSER = "/usr/local/bin/chrome-headless-shell";
 
   try {
     if (!fs.existsSync(entry)) {
@@ -27,7 +27,7 @@ export const handleExport = async (req: Request, res: Response) => {
     const composition = await selectComposition({
       serveUrl: bundleLocation,
       id: compositionId,
-      browserExecutable: chromiumPath,
+      browserExecutable: BROWSER,
       inputProps,
     });
 
@@ -45,7 +45,7 @@ export const handleExport = async (req: Request, res: Response) => {
       outputLocation: mp4Path,
       inputProps,
       concurrency: 1,
-      browserExecutable: chromiumPath
+      browserExecutable: BROWSER
     });
 
     console.log("✅ Render complete.");
