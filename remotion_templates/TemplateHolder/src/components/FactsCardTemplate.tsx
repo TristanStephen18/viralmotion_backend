@@ -25,6 +25,7 @@ type FactsCardVideoProps = {
   fontFamilySubtitle: string;
   fontColorTitle: string;
   fontColorSubtitle: string;
+  duration: number;
 };
 
 export const FactsCardVideo: React.FC<FactsCardVideoProps> = ({

@@ -16,7 +16,11 @@ import FlipCardData from "../data/flipcardsdata.json";
 import KpiFlipCards from "./components/KpiFlipCardsTemplate";
 import { KenBurnsCarousel } from "./components/KenBurnsSwipe";
 import KenBurnsProps from "../data/kenburnsconfig.json";
-import { ChatVideo3, ChatVideoProps } from "./components/FakeTextConversation";
+import {
+  ChatVideo2,
+  ChatVideoProps,
+  TranscriptJson,
+} from "./components/FakeTextConversation";
 import faketextvideoconfig from "../data/faketextconversationconfig.json";
 // import { MyRedditVideo } from '../../../../frontend/src/components/remotion_compositions/RedditTemplate';
 import redditProps from "../data/redditconfig.json";
@@ -34,9 +38,20 @@ import newtexttypingconfigs from "../data/newtexttypingconfig.json";
 import KineticTypographyIntro, {
   TypographyConfig,
 } from "./components/KineticText";
+import {
+  flipcardsdefaulvalues,
+  logoanimationdefaultvalues,
+} from "./defaultvalues";
+import {
+  FlipCardsCompositionComponent,
+  MetricCardsProps,
+} from "./components/FlipCards";
+import { LogoCompositionComponent } from "./components/LogoAnimation";
 // import { duration } from '@mui/material';
+import redditscriptdummy from "../data/others/redditstoryscript.json";
+import storytellingdummy from "../data/others/storytellingscript.json";
 
-type Derived = React.ComponentProps<typeof ChatVideo3>;
+type Derived = React.ComponentProps<typeof ChatVideo2>;
 
 const defaultConfig: TypographyConfig = {
   id: "default-kinetic-v1",
@@ -59,7 +74,7 @@ const defaultConfig: TypographyConfig = {
 };
 
 type RootProps = Derived & {
-  chatPath?: string;
+  chatdata?: TranscriptJson;
   bgVideo?: string;
   chatAudio?: string;
   musicAudio?: string;
@@ -97,6 +112,14 @@ export const RemotionRoot: React.FC = () => {
         height={1920}
         width={1080}
         defaultProps={factscardconfig}
+        calculateMetadata={async ({ props }) => {
+          return {
+            durationInFrames: 30 * props.duration,
+            fps: 30,
+            width: 1080,
+            height: 1920,
+          };
+        }}
       />
       <Composition
         id="BarGraph"
@@ -110,12 +133,23 @@ export const RemotionRoot: React.FC = () => {
       <Composition
         id="SplitScreen"
         component={SplitScreen}
-        durationInFrames={60 * SpliScreenConfig.duration} // 10s @ 30fps
+        defaultProps={SpliScreenConfig}
         fps={60}
         width={1080}
         height={1920}
-        defaultProps={SpliScreenConfig}
+        calculateMetadata={async ({ props }) => {
+          const fps = 60;
+          const durationInFrames = Math.ceil(props.duration * fps);
+
+          return {
+            durationInFrames,
+            fps,
+            width: 1080,
+            height: 1920,
+          };
+        }}
       />
+
       <Composition
         id="TypingVideo"
         component={TypingVideo}
@@ -137,7 +171,7 @@ export const RemotionRoot: React.FC = () => {
       <Composition
         id="QuoteComposition"
         component={QuoteComposition}
-        durationInFrames={1} // placeholder, gets overridden ✔️
+        durationInFrames={1}
         fps={30}
         height={1920}
         width={1080}
@@ -197,7 +231,7 @@ export const RemotionRoot: React.FC = () => {
       />
       <Composition
         id="ChatVideo"
-        component={ChatVideo3}
+        component={ChatVideo2}
         fps={FPS}
         width={WIDTH}
         height={HEIGHT}
@@ -207,14 +241,11 @@ export const RemotionRoot: React.FC = () => {
             ...faketextvideoconfig,
             ...(props ?? {}),
           } as Required<RootProps>;
-          const chatPath: string = p.chatPath;
 
           let lastTime = 0;
-
           // 1. Check chat JSON timestamps
           try {
-            const res = await fetch(chatPath);
-            const json = await res.json();
+            const json = p.chatdata;
 
             if (Array.isArray((json as any)?.segments)) {
               const segments = (json as any).segments as Array<{
@@ -272,6 +303,7 @@ export const RemotionRoot: React.FC = () => {
         height={1920}
         width={1080}
         defaultProps={{
+          script: redditscriptdummy,
           voiceoverPath: redditProps.voiceoverPath,
           duration: redditProps.duration,
           fontSize: redditProps.fontSize,
@@ -283,6 +315,17 @@ export const RemotionRoot: React.FC = () => {
           backgroundMusicPath: redditProps.backgroundMusicPath,
           musicVolume: 0.2,
         }}
+        calculateMetadata={async ({ props }) => {
+          const fps = 30;
+          const durationInFrames = Math.ceil(props.duration * fps);
+
+          return {
+            durationInFrames,
+            fps,
+            width: 1080,
+            height: 1920,
+          };
+        }}
       />
       <Composition
         id="StoryTellingVideo"
@@ -292,6 +335,7 @@ export const RemotionRoot: React.FC = () => {
         height={1920}
         width={1080}
         defaultProps={{
+          script: storytellingdummy,
           voiceoverPath: storytellingprops.voiceoverPath,
           duration: storytellingprops.duration,
           fontSize: storytellingprops.fontSize,
@@ -302,6 +346,17 @@ export const RemotionRoot: React.FC = () => {
           backgroundVideo: storytellingprops.backgroundVideo,
           backgroundMusicPath: storytellingprops.backgroundMusicPath,
           musicVolume: 0.2,
+        }}
+        calculateMetadata={async ({ props }) => {
+          const fps = 30;
+          const durationInFrames = Math.ceil(props.duration * fps);
+
+          return {
+            durationInFrames,
+            fps,
+            width: 1080,
+            height: 1920,
+          };
         }}
       />
       <Composition
@@ -337,6 +392,33 @@ export const RemotionRoot: React.FC = () => {
         width={1080}
         height={1920}
         durationInFrames={240}
+      />
+      <Composition
+        id="FlipCards"
+        durationInFrames={180}
+        component={FlipCardsCompositionComponent}
+        defaultProps={{ config: flipcardsdefaulvalues as MetricCardsProps }}
+        fps={30}
+        width={1080}
+        height={1920}
+      />
+      <Composition
+        id="LogoAnimation"
+        component={LogoCompositionComponent}
+        defaultProps={{ config: logoanimationdefaultvalues }}
+        calculateMetadata={({ props }) => {
+          const fps = 30;
+          const outlineFrames = props.config.durationOutline * fps;
+          const fillFrames = props.config.durationFill * fps;
+          const endPauseFrames = props.config.durationEndPause * fps;
+
+          return {
+            durationInFrames: outlineFrames + fillFrames + endPauseFrames,
+            fps: 30,
+            width: 1920,
+            height: 1080,
+          };
+        }}
       />
     </>
   );

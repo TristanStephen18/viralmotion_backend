@@ -6,14 +6,26 @@ import {
   useCurrentFrame,
   Sequence,
 } from "remotion";
-import script from "../../data/others/redditstoryscript.json";
-// import backgroundVideo from "../data/background.json";
 
 // ------------------ Types ------------------
 type Word = { word: string; start: number; end: number };
 
+interface Words {
+  word: string;
+  start: number;
+  end: number;
+}
+
+type ScriptStructure = {
+  story: string;
+  duration: number;
+  words: Words[];
+  title: string;
+  text: string;
+};
 
 type MyRedditVideoProps = {
+  script: ScriptStructure;
   voiceoverPath: string;
   duration: number;
   fontSize: number;
@@ -28,6 +40,7 @@ type MyRedditVideoProps = {
 
 // ------------------ Main Video ------------------
 export const MyRedditVideo: React.FC<MyRedditVideoProps> = ({
+  script,
   voiceoverPath,
   fontSize,
   fontFamily,
@@ -36,15 +49,10 @@ export const MyRedditVideo: React.FC<MyRedditVideoProps> = ({
   backgroundOverlayColor,
   backgroundMusicPath,
   musicVolume = 0.15,
-  backgroundVideo
+  backgroundVideo,
 }) => {
   const { fps } = useVideoConfig();
-  const { title, text, words } = script as {
-    title: string;
-    text: string;
-    duration: number;
-    words: Word[];
-  };
+  const { title, text, words } = script;
   const bg = backgroundVideo;
 
   const introDuration = 2 * fps;
@@ -116,7 +124,9 @@ const RedditPost: React.FC<{ title: string; text: string }> = ({
         }}
       >
         {/* Top bar */}
-        <div style={{ display: "flex", alignItems: "center", marginBottom: 24 }}>
+        <div
+          style={{ display: "flex", alignItems: "center", marginBottom: 24 }}
+        >
           <img
             src={"https://res.cloudinary.com/dnxc1lw18/image/upload/v1760981744/Reddit_Logo_uhx1je.png"}
             style={{

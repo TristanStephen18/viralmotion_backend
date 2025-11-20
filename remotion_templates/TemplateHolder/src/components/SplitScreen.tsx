@@ -20,6 +20,7 @@ export type SplitScreenProps = {
   swap?: boolean;
   transitionDuration?: number;    // in frames
   slideOffsetPercent?: number;    // how far they travel (default 30%)
+  duration: number;
 };
 
 export const SplitScreen: React.FC<SplitScreenProps> = ({

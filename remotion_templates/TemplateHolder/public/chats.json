@@ -2,18 +2,18 @@
   "language_code": "eng",
   "segments": [
     {
-      "text": "Hey it's Mariz, how are you today?",
+      "text": "Hey, my name is Renold. What is your name?",
       "start_time": 0,
-      "end_time": 1.854688,
+      "end_time": 2.272625,
       "speaker": {
         "id": "person_1",
         "name": "person 1"
       }
     },
     {
-      "text": "Hey, this is Martha speaking. How can I help yuo?",
-      "start_time": 1.854688,
-      "end_time": 4.8065,
+      "text": "Get away from me you old pervert!",
+      "start_time": 2.272625,
+      "end_time": 4.493,
       "speaker": {
         "id": "person_2",
         "name": "person 2"

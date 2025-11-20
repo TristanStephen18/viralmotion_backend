@@ -7,11 +7,22 @@ import {
   Sequence,
 } from "remotion";
 
-import script from "../../data/others/storytellingscript.json";
-
 type Word = { word: string; start: number; end: number };
 
+interface Words {
+  word: string;
+  start: number;
+  end: number;
+}
+
+type ScriptStructure = {
+  story: string;
+  duration: number;
+  words: Words[];
+};
+
 type StoryTellingVideoProps = {
+  script: ScriptStructure;
   voiceoverPath: string;
   duration: number;
   fontSize: number;
@@ -25,6 +36,7 @@ type StoryTellingVideoProps = {
 };
 
 export const StoryTellingVideo: React.FC<StoryTellingVideoProps> = ({
+  script,
   voiceoverPath,
   fontSize,
   fontFamily,
@@ -67,6 +79,7 @@ export const StoryTellingVideo: React.FC<StoryTellingVideoProps> = ({
         <Audio src={voiceoverPath} />
       </Sequence>
 
+      {/* Optional background music 🎶 */}
       {backgroundMusicPath && (
         <Audio src={backgroundMusicPath} volume={musicVolume} />
       )}
@@ -153,7 +166,7 @@ const SentenceBuilder: React.FC<SentenceBuilderProps> = ({
               line.findIndex(
                 (ww) =>
                   frame >= Math.floor(ww.start * fps) &&
-                  frame < Math.floor(ww.end * fps),
+                  frame < Math.floor(ww.end * fps)
               );
 
             const bg = isLatest ? sentenceBgColor : "transparent";

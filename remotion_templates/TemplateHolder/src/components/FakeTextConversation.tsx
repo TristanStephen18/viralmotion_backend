@@ -7,10 +7,33 @@ import {
   useVideoConfig,
   interpolate,
   Easing,
-  Img,
-  staticFile,
 } from "remotion";
 
+ const defaultchats = {
+  "language_code": "eng",
+  "segments": [
+    {
+      "text": "Hey, have you tried The Green Fork yet?",
+      "start_time": 0,
+      "end_time": 2.220375,
+      "speaker": {
+        "id": "person_1",
+        "name": "person 1"
+      }
+    },
+    {
+      "text": "Not yet. Is it any good?",
+      "start_time": 2.220375,
+      "end_time": 4.075063,
+      "speaker": {
+        "id": "person_2",
+        "name": "person 2"
+      }
+    }
+  ],
+}
+
+// ---------- Types ----------
 interface TranscriptSpeaker {
   id?: string;
   name?: string;
@@ -27,24 +50,22 @@ export interface TranscriptJson {
 }
 
 export type ChatVideoProps = {
-  //   chatdata?: TranscriptJson;
-  chatPath: string; // "chat.json"
-
-  bgVideo: string;
-  chatAudio: string;
-  musicAudio: string;
-  musicBase: number;
-  musicWhileTalking: number;
-  duckAttackMs: number;
-  duckReleaseMs: number;
-  timeShiftSec: number;
+  chatdata?: TranscriptJson;
+  bgVideo?: string;
+  chatAudio?: string;
+  musicAudio?: string;
+  musicBase?: number;
+  musicWhileTalking?: number;
+  duckAttackMs?: number;
+  duckReleaseMs?: number;
+  timeShiftSec?: number;
 
   // New props
-  fontFamily: string;
-  fontSize: number;
-  fontColor: string;
-  chatTheme: "default" | "discord" | "messenger" | "whatsapp";
-  avatars: {
+  fontFamily?: string;
+  fontSize?: number;
+  fontColor?: string;
+  chatTheme?: "default" | "discord" | "messenger" | "whatsapp";
+  avatars?: {
     left?: string;
     right?: string;
   };
@@ -159,7 +180,7 @@ function normalizeSequential(messages: ChatMessage[]): ChatMessage[] {
 
 function buildPersonas(
   messages: ChatMessage[],
-  avatars?: { left?: string; right?: string },
+  avatars?: { left?: string; right?: string }
 ): Record<string, Persona> {
   const order: string[] = [];
   const seen = new Set<string>();
@@ -263,8 +284,9 @@ const ChatBubble: React.FC<{
         }}
       >
         {persona.avatar ? (
-          <Img
+          <img
             src={persona.avatar}
+            alt={persona.name}
             style={{ width: "100%", height: "100%", objectFit: "cover" }}
           />
         ) : (
@@ -314,20 +336,20 @@ const ChatBubble: React.FC<{
   );
 };
 
-export const ChatVideo3: React.FC<ChatVideoProps> = ({
-  chatPath,
-  bgVideo,
-  chatAudio,
-  musicAudio,
-  musicBase,
-  musicWhileTalking,
-  duckAttackMs,
-  duckReleaseMs,
-  timeShiftSec,
-  fontFamily,
-  fontSize,
-  fontColor,
-  chatTheme,
+export const ChatVideo2: React.FC<ChatVideoProps> = ({
+  chatdata = defaultchats,
+  bgVideo = "bg.mp4",
+  chatAudio = "chat.mp3",
+  musicAudio = "music.mp3",
+  musicBase = 0.12,
+  musicWhileTalking = 0.06,
+  duckAttackMs = 120,
+  duckReleaseMs = 240,
+  timeShiftSec = 0,
+  fontFamily = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+  fontSize = 28,
+  fontColor = "",
+  chatTheme = "default",
   avatars,
 }) => {
   const frame = useCurrentFrame();
@@ -351,11 +373,7 @@ export const ChatVideo3: React.FC<ChatVideoProps> = ({
     let mounted = true;
     (async () => {
       try {
-        const res = await fetch(staticFile(chatPath));
-        if (!res.ok)
-          throw new Error(`Failed to load ${chatPath}: ${res.status}`);
-        const raw = (await res.json()) as unknown;
-
+        const raw = chatdata;
         const data: ChatMessage[] = Array.isArray(raw)
           ? (raw as any[]).map((m, i) => ({
               id: Number(m.id ?? i + 1),
@@ -377,13 +395,13 @@ export const ChatVideo3: React.FC<ChatVideoProps> = ({
     return () => {
       mounted = false;
     };
-  }, [chatPath]);
+  }, [chatdata]);
 
   useEffect(() => {
     let cancelled = false;
     const check = async (
       file: string | undefined,
-      setOK: (ok: boolean) => void,
+      setOK: (ok: boolean) => void
     ) => {
       if (!file) return setOK(false);
       try {
@@ -409,7 +427,7 @@ export const ChatVideo3: React.FC<ChatVideoProps> = ({
 
   const personas = useMemo(
     () => buildPersonas(messages, avatars),
-    [messages, avatars],
+    [messages, avatars]
   );
   const theme = THEMES[chatTheme] || THEMES.default;
 
@@ -422,7 +440,7 @@ export const ChatVideo3: React.FC<ChatVideoProps> = ({
       extrapolateRight: "clamp",
     }),
     0,
-    1,
+    1
   );
   const cardOpacity = cardOpacityBase * gate;
 
@@ -433,7 +451,7 @@ export const ChatVideo3: React.FC<ChatVideoProps> = ({
         const e = s + m.duration;
         return nowSec >= s && nowSec <= e;
       }),
-    [messages, nowSec, timeShiftSec],
+    [messages, nowSec, timeShiftSec]
   );
 
   const musicVol = useMemo(() => {
