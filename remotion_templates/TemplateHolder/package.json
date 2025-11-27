@@ -6,14 +6,15 @@
   "license": "UNLICENSED",
   "private": true,
   "dependencies": {
-    "@remotion/cli": "4.0.340",
-    "@remotion/google-fonts": "^4.0.345",
+    "@remotion/cli": "^4.0.377",
+    "@remotion/google-fonts": "^4.0.377",
+    "@remotion/lambda": "4.0.377",
     "react": "19.0.0",
     "react-dom": "19.0.0",
-    "remotion": "4.0.340"
+    "remotion": "4.0.377"
   },
   "devDependencies": {
-    "@remotion/eslint-config-flat": "4.0.340",
+    "@remotion/eslint-config-flat": "4.0.377",
     "@types/react": "19.0.0",
     "@types/web": "0.0.166",
     "eslint": "9.19.0",

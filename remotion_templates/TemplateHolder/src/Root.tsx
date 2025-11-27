@@ -1,77 +1,33 @@
 import { Composition } from "remotion";
-import factscardconfig from "../data/factscardsconfig.json";
 import { FactsCardVideo } from "./components/FactsCardTemplate";
-import bargraphconfig from "../data/bargraphconfig.json";
 import { BarGraph } from "./components/BarGraphTemplate";
 import { getAudioData } from "@remotion/media-utils";
-
-import SpliScreenConfig from "../data/splitscreenconfig.json";
 import { SplitScreen } from "./components/SplitScreen";
-import { TypingVideo } from "./components/TexttypingTemplate/TypingVideo";
-import typingdata from "../data/data.json";
 import { QuoteComposition } from "./components/QuoteTemplate";
-// import quoteData from "../data/quotedata.json";
-// import SecondFlipCards from "./components/KpiFlipCardsTemplate";
-import FlipCardData from "../data/flipcardsdata.json";
 import KpiFlipCards from "./components/KpiFlipCardsTemplate";
 import { KenBurnsCarousel } from "./components/KenBurnsSwipe";
-import KenBurnsProps from "../data/kenburnsconfig.json";
 import {
   ChatVideo2,
   ChatVideoProps,
   TranscriptJson,
 } from "./components/FakeTextConversation";
-import faketextvideoconfig from "../data/faketextconversationconfig.json";
-// import { MyRedditVideo } from '../../../../frontend/src/components/remotion_compositions/RedditTemplate';
-import redditProps from "../data/redditconfig.json";
 import { MyRedditVideo } from "./components/RedditVideoTemplate";
 import { StoryTellingVideo } from "./components/StoryTellingTemplate";
-import storytellingprops from "../data/storytellingconfig.json";
 import {
   SimpleGraphProps,
   SimpleTrendGraph,
 } from "./components/CurveLineTrend/SimplifierComponent";
-import curveLineTrendProps from "../data/curvelinetrendconfig.json";
 import { NewTypingAnimation } from "./components/NewTextTyping/TypingAnimation";
 import { calculateDuration, durationIndicatorQuote } from "./helpers";
-import newtexttypingconfigs from "../data/newtexttypingconfig.json";
-import KineticTypographyIntro, {
-  TypographyConfig,
-} from "./components/KineticText";
-import {
-  flipcardsdefaulvalues,
-  logoanimationdefaultvalues,
-} from "./defaultvalues";
+import KineticTypographyIntro from "./components/KineticText";
 import {
   FlipCardsCompositionComponent,
   MetricCardsProps,
 } from "./components/FlipCards";
 import { LogoCompositionComponent } from "./components/LogoAnimation";
-// import { duration } from '@mui/material';
-import redditscriptdummy from "../data/others/redditstoryscript.json";
-import storytellingdummy from "../data/others/storytellingscript.json";
+import * as defaultValues from "./defaultvalues";
 
 type Derived = React.ComponentProps<typeof ChatVideo2>;
-
-const defaultConfig: TypographyConfig = {
-  id: "default-kinetic-v1",
-  words: ["KINETIC", "TYPOGRAPHY"],
-  colors: {
-    primary: "#00f2ff",
-    secondary: "#ff4fa3",
-    accent: "#ffffff",
-  },
-  timing: {
-    staggerDelay: 5,
-    collisionFrame: 45,
-    explosionDelay: 20,
-  },
-  effects: {
-    shakeIntensity: 12,
-    particleCount: 70,
-    ballSize: 120,
-  },
-};
 
 type RootProps = Derived & {
   chatdata?: TranscriptJson;
@@ -90,7 +46,6 @@ const FPS = 30;
 const TAIL_PADDING_SEC = 1.0;
 
 export const RemotionRoot: React.FC = () => {
-  const fps = 30;
   const delayStart = 0.5;
   const delayStep = 1;
   const numCards = 4; // Default number of cards
@@ -107,11 +62,11 @@ export const RemotionRoot: React.FC = () => {
       <Composition
         id="GlassFactsVideo"
         component={FactsCardVideo}
-        durationInFrames={30 * factscardconfig.duration}
+        durationInFrames={30 * defaultValues.facstCardDefaultValues.duration}
         fps={30}
         height={1920}
         width={1080}
-        defaultProps={factscardconfig}
+        defaultProps={defaultValues.facstCardDefaultValues}
         calculateMetadata={async ({ props }) => {
           return {
             durationInFrames: 30 * props.duration,
@@ -124,16 +79,16 @@ export const RemotionRoot: React.FC = () => {
       <Composition
         id="BarGraph"
         component={BarGraph}
-        durationInFrames={bargraphconfig.duration * 30}
+        durationInFrames={defaultValues.barGraphDefaultValues.duration * 30}
         fps={30}
         height={1920}
         width={1080}
-        defaultProps={bargraphconfig}
+        defaultProps={defaultValues.barGraphDefaultValues}
       />
       <Composition
         id="SplitScreen"
         component={SplitScreen}
-        defaultProps={SpliScreenConfig}
+        defaultProps={defaultValues.splitScreenDefaultValues}
         fps={60}
         width={1080}
         height={1920}
@@ -149,25 +104,6 @@ export const RemotionRoot: React.FC = () => {
           };
         }}
       />
-
-      <Composition
-        id="TypingVideo"
-        component={TypingVideo}
-        durationInFrames={fps * typingdata.duration}
-        fps={fps}
-        height={1920}
-        width={1080}
-        defaultProps={{
-          content: typingdata.content,
-          bgimage: typingdata.backgroundImage,
-          duration: typingdata.duration,
-          fps: fps,
-          fontSize: typingdata.fontSize,
-          fontColor: typingdata.fontColor,
-          fontFamily: typingdata.fontFamily,
-          sound: typingdata.sound,
-        }}
-      />
       <Composition
         id="QuoteComposition"
         component={QuoteComposition}
@@ -175,15 +111,7 @@ export const RemotionRoot: React.FC = () => {
         fps={30}
         height={1920}
         width={1080}
-        defaultProps={{
-          quote: "Sample",
-          author: "sample",
-          backgroundImage:
-            "https://res.cloudinary.com/dnxc1lw18/image/upload/v1760979566/bg11_deliyh.jpg",
-          fontFamily: "Arial, sans-serif",
-          fontSize: 1,
-          fontColor: "white",
-        }}
+        defaultProps={defaultValues.quoetTemplateDefaultValues}
         calculateMetadata={async ({ props }) => {
           const durationSeconds = durationIndicatorQuote(props.quote.length);
           return {
@@ -200,7 +128,7 @@ export const RemotionRoot: React.FC = () => {
         fps={30}
         width={1080}
         height={1920}
-        defaultProps={FlipCardData}
+        defaultProps={defaultValues.kpiFlipCardsDefaultValues}
         calculateMetadata={({ props }) => {
           const actualCards = props.cardsData?.length || numCards;
           const actualDelayStart = props.delayStart ?? delayStart;
@@ -223,11 +151,11 @@ export const RemotionRoot: React.FC = () => {
       <Composition
         id="KenBurnsCarousel"
         component={KenBurnsCarousel}
-        durationInFrames={KenBurnsProps.duration * 30}
+        durationInFrames={defaultValues.kenburnsDefaultValues.duration * 30}
         fps={30}
         width={1080}
         height={1920}
-        defaultProps={KenBurnsProps}
+        defaultProps={defaultValues.kenburnsDefaultValues}
       />
       <Composition
         id="ChatVideo"
@@ -235,10 +163,10 @@ export const RemotionRoot: React.FC = () => {
         fps={FPS}
         width={WIDTH}
         height={HEIGHT}
-        defaultProps={faketextvideoconfig as ChatVideoProps}
+        defaultProps={defaultValues.fakeTextDefaultValues as ChatVideoProps}
         calculateMetadata={async ({ props }) => {
           const p = {
-            ...faketextvideoconfig,
+            ...defaultValues.fakeTextDefaultValues,
             ...(props ?? {}),
           } as Required<RootProps>;
 
@@ -298,21 +226,21 @@ export const RemotionRoot: React.FC = () => {
       <Composition
         id="RedditNarration"
         component={MyRedditVideo}
-        durationInFrames={Math.ceil(redditProps.duration * 30)}
+        durationInFrames={Math.ceil(defaultValues.redditDefaultValues.duration * 30)}
         fps={30}
         height={1920}
         width={1080}
         defaultProps={{
-          script: redditscriptdummy,
-          voiceoverPath: redditProps.voiceoverPath,
-          duration: redditProps.duration,
-          fontSize: redditProps.fontSize,
-          fontFamily: redditProps.fontFamily,
-          fontColor: redditProps.fontColor,
-          sentenceBgColor: redditProps.sentenceBgColor,
+          script: defaultValues.redditDefaultValues.script,
+          voiceoverPath: defaultValues.redditDefaultValues.voiceoverPath,
+          duration: defaultValues.redditDefaultValues.duration,
+          fontSize: defaultValues.redditDefaultValues.fontSize,
+          fontFamily: defaultValues.redditDefaultValues.fontFamily,
+          fontColor: defaultValues.redditDefaultValues.fontColor,
+          sentenceBgColor: defaultValues.redditDefaultValues.sentenceBgColor,
           backgroundOverlayColor: "rgba(0,0,0,0.6)",
-          backgroundVideo: redditProps.backgroundVideo,
-          backgroundMusicPath: redditProps.backgroundMusicPath,
+          backgroundVideo: defaultValues.redditDefaultValues.backgroundVideo,
+          backgroundMusicPath: defaultValues.redditDefaultValues.backgroundMusicPath,
           musicVolume: 0.2,
         }}
         calculateMetadata={async ({ props }) => {
@@ -330,21 +258,21 @@ export const RemotionRoot: React.FC = () => {
       <Composition
         id="StoryTellingVideo"
         component={StoryTellingVideo}
-        durationInFrames={Math.ceil(storytellingprops.duration * 30)}
+        durationInFrames={Math.ceil(defaultValues.storyTellingDefaultValues.duration * 30)}
         fps={30}
         height={1920}
         width={1080}
         defaultProps={{
-          script: storytellingdummy,
-          voiceoverPath: storytellingprops.voiceoverPath,
-          duration: storytellingprops.duration,
-          fontSize: storytellingprops.fontSize,
-          fontFamily: storytellingprops.fontFamily,
-          fontColor: storytellingprops.fontColor,
-          sentenceBgColor: storytellingprops.sentenceBgColor,
+          script: defaultValues.storyTellingDefaultValues.script,
+          voiceoverPath: defaultValues.storyTellingDefaultValues.voiceoverPath,
+          duration: defaultValues.storyTellingDefaultValues.duration,
+          fontSize: defaultValues.storyTellingDefaultValues.fontSize,
+          fontFamily: defaultValues.storyTellingDefaultValues.fontFamily,
+          fontColor: defaultValues.storyTellingDefaultValues.fontColor,
+          sentenceBgColor: defaultValues.storyTellingDefaultValues.sentenceBgColor,
           backgroundOverlayColor: "rgba(0,0,0,0.6)",
-          backgroundVideo: storytellingprops.backgroundVideo,
-          backgroundMusicPath: storytellingprops.backgroundMusicPath,
+          backgroundVideo: defaultValues.storyTellingDefaultValues.backgroundVideo,
+          backgroundMusicPath: defaultValues.storyTellingDefaultValues.backgroundMusicPath,
           musicVolume: 0.2,
         }}
         calculateMetadata={async ({ props }) => {
@@ -362,24 +290,24 @@ export const RemotionRoot: React.FC = () => {
       <Composition
         id="CurveLineTrend"
         component={SimpleTrendGraph}
-        durationInFrames={30 * curveLineTrendProps.duration}
+        durationInFrames={30 * defaultValues.curveLineTrendDefaultValues.duration}
         fps={30}
         width={1080}
         height={1920}
-        defaultProps={curveLineTrendProps as SimpleGraphProps}
+        defaultProps={defaultValues.curveLineTrendDefaultValues as SimpleGraphProps}
       />
       <Composition
         id="NewTexTyping"
         component={NewTypingAnimation}
-        durationInFrames={calculateDuration(newtexttypingconfigs.phrase)}
+        durationInFrames={calculateDuration(defaultValues.textTypingDefaultValues.phrase)}
         fps={60}
         width={1080}
         height={1920}
         defaultProps={{
-          phraseData: newtexttypingconfigs.phrase,
-          fontIndex: newtexttypingconfigs.fontIndex, // Poppins
-          backgroundIndex: newtexttypingconfigs.backgroundIndex, // Ambient Flow
-          audioIndex: newtexttypingconfigs.audioIndex, // Soft Keys
+          phraseData: defaultValues.textTypingDefaultValues.phrase,
+          fontIndex: defaultValues.textTypingDefaultValues.fontIndex, // Poppins
+          backgroundIndex: defaultValues.textTypingDefaultValues.backgroundIndex, // Ambient Flow
+          audioIndex: defaultValues.textTypingDefaultValues.audioIndex, // Soft Keys
         }}
       />
       <Composition
@@ -387,7 +315,7 @@ export const RemotionRoot: React.FC = () => {
         component={KineticTypographyIntro}
         fps={30}
         defaultProps={{
-          config: defaultConfig,
+          config: defaultValues.defaultConfig,
         }}
         width={1080}
         height={1920}
@@ -397,7 +325,7 @@ export const RemotionRoot: React.FC = () => {
         id="FlipCards"
         durationInFrames={180}
         component={FlipCardsCompositionComponent}
-        defaultProps={{ config: flipcardsdefaulvalues as MetricCardsProps }}
+        defaultProps={{ config: defaultValues.flipcardsdefaulvalues as MetricCardsProps }}
         fps={30}
         width={1080}
         height={1920}
@@ -405,7 +333,7 @@ export const RemotionRoot: React.FC = () => {
       <Composition
         id="LogoAnimation"
         component={LogoCompositionComponent}
-        defaultProps={{ config: logoanimationdefaultvalues }}
+        defaultProps={{ config: defaultValues.logoanimationdefaultvalues }}
         calculateMetadata={({ props }) => {
           const fps = 30;
           const outlineFrames = props.config.durationOutline * fps;

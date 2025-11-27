@@ -28,6 +28,11 @@ export const QuoteComposition: React.FC<{
 }) => {
   const frame = useCurrentFrame();
   const { fps, width, height } = useVideoConfig();
+  const props = {
+    quote, author, backgroundImage, fontColor, fontFamily, fontSize
+  }
+
+  console.log("Received props : ", props);
 
   // Animation parameters
   const quoteMarkScale = spring({
