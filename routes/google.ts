@@ -19,7 +19,7 @@ passport.use(
     {
       clientID: GOOGLE_CLIENT_ID,
       clientSecret: GOOGLE_CLIENT_SECRET,
-      callbackURL: "http://localhost:3000/authenticate/google/callback",
+      callbackURL: "https://viralmotion-backend-8rk7.onrender.com/authenticate/google/callback",
     },
     async (
       accessToken: string,
