@@ -380,5 +380,77 @@ router.post("/story", async (req, res) => {
     });
   }
 });
+// Add this route to your existing elevenlabs router
+router.post("/generate-voiceover", async (req, res) => {
+  console.log('\n📨 ElevenLabs Voiceover request received');
+  console.log('Time:', new Date().toISOString());
+  
+  try {
+    const { text, voice, speed } = req.body;
+    
+    // Validation
+    if (!text || !voice) {
+      console.log('❌ Missing required fields');
+      return res.status(400).json({ 
+        error: 'Missing required fields: text, voice' 
+      });
+    }
+
+    if (!process.env.ELEVEN_LABS_API_KEY) {
+      console.error('❌ ELEVEN_LABS_API_KEY not set');
+      return res.status(500).json({ 
+        error: 'Server configuration error' 
+      });
+    }
+
+    console.log('✅ Validation passed');
+    console.log('📝 Text length:', text.length);
+    console.log('🎤 Voice:', voice);
+    console.log('⚡ Speed:', speed);
+
+    // Map OpenAI voice names to ElevenLabs voice IDs
+    const VOICE_MAP: Record<string, string> = {
+      'alloy': 'EXAVITQu4vr4xnSDxMaL',      // Bella (neutral)
+      'echo': 'pNInz6obpgDQGcFmaJgB',       // Adam (male)
+      'fable': 'N2lVS1w4EtoT3dr4eOWO',      // Callum (male)
+      'onyx': 'VR6AewLTigWG4xSOukaG',       // Arnold (deep male)
+      'nova': 'EXAVITQu4vr4xnSDxMaL',       // Bella (female)
+      'shimmer': 'ThT5KcBeYPX3keUQqHPh',    // Dorothy (soft female)
+    };
+    
+    const voiceId = VOICE_MAP[voice] || VOICE_MAP['alloy'];
+    console.log('🎭 Using ElevenLabs Voice ID:', voiceId);
+    
+    console.log('🌐 Calling ElevenLabs TTS API...');
+    
+    // Generate audio using your existing ElevenLabs client
+    const audioStream = await elevenLabs.textToSpeech.convert(
+      voiceId,
+      {
+        modelId: "eleven_multilingual_v2",
+        text: text,
+      }
+    );
+
+    console.log('✅ Converting stream to buffer...');
+    const buffer = await webStreamToBuffer(audioStream);
+    console.log('✅ Audio size:', buffer.byteLength, 'bytes');
+
+    // Send audio directly
+    res.setHeader('Content-Type', 'audio/mpeg');
+    res.setHeader('Content-Length', buffer.byteLength.toString());
+    res.send(buffer);
+    
+    console.log('✅ Audio sent successfully\n');
+    
+  } catch (error) {
+    console.error('❌ SERVER ERROR:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    return res.status(500).json({ 
+      error: 'Server error',
+      details: errorMessage
+    });
+  }
+});
 
 export default router;

@@ -19,10 +19,14 @@ import geminiImageGenRoutes from './routes/apis/imagegeneration/gemini.ts';
 import openAiImageGenRoutes from './routes/apis/imagegeneration/openai.ts';
 import huggingFaceVideoGenroutes from './routes/apis/videogeneration/huggingface.ts';
 import tavusRoutes from './routes/apis/videogeneration/tavus.ts';
+//renold additional routes
+import veoRoutes from './routes/tools/veo.ts';
+import ytRoutes from './routes/tools/yt_2.ts';
+import audioRoutes from './routes/tools/audio.ts';
+import enhanceSpeechRoutes from './routes/tools/enhanceSpeech.ts';
+// import remixVideo from './routes/tools/remixVideo.ts';
 // import mainRenderingRoute from ""
 import cors from "cors";
-import fs from "fs";
-import { distentry, entry, entry2 } from "./controllers/entrypoint.ts";
 import session from 'express-session';
 import passport from 'passport';
 
@@ -69,6 +73,10 @@ app.use('/api/gemini-image', geminiImageGenRoutes);
 app.use('/api/openai-image', openAiImageGenRoutes);
 app.use('/api/video-generation/huggingface', huggingFaceVideoGenroutes);
 app.use('/api/video-generation/tavus', tavusRoutes);
+app.use('/api/veo', veoRoutes);
+app.use('/api/youtube', ytRoutes);
+app.use('/api/tools/audio',audioRoutes);
+app.use('/api/tools/speech-enhancement', enhanceSpeechRoutes);
 
 app.listen(3000, "0.0.0.0", () => {
   console.log("Server is running on http://0.0.0.0:3000");
