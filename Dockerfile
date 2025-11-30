@@ -2,7 +2,7 @@ FROM node:22-slim
  
 WORKDIR /app 
  
-# Install Chrome dependencies and Python
+# Install Chrome dependencies, Python, and yt-dlp
 RUN apt-get update && apt-get install -y \ 
   fonts-liberation \ 
   libasound2 \ 
@@ -29,7 +29,8 @@ RUN apt-get update && apt-get install -y \
   xdg-utils \ 
   python3 \ 
   python3-pip \ 
-  && ln -s /usr/bin/python3 /usr/bin/python \ 
+  ffmpeg \ 
+  && pip3 install --no-cache-dir yt-dlp \ 
   && rm -rf /var/lib/apt/lists/* 
  
 COPY package*.json ./ 

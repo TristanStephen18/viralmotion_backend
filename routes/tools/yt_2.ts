@@ -1,17 +1,73 @@
 import { Router } from 'express';
-import {youtubeDl} from 'youtube-dl-exec';
+import { exec } from 'child_process';
+import { promisify } from 'util';
 import fs from 'fs';
 import path from 'path';
+import os from 'os';
+import { supabase, SUPABASE_BUCKET } from '../../utils/supabaseClient.ts';
 
+const execPromise = promisify(exec);
 const router = Router();
 
-const DOWNLOADS_DIR = path.join(process.cwd(), 'downloads');
+const activeDownloads = new Map();
 
-if (!fs.existsSync(DOWNLOADS_DIR)) {
-  fs.mkdirSync(DOWNLOADS_DIR, { recursive: true });
+// Helper: Execute yt-dlp command
+async function runYtDlp(args: string[]): Promise<string> {
+  const command = `yt-dlp ${args.join(' ')}`;
+  const { stdout } = await execPromise(command);
+  return stdout;
 }
 
-const activeDownloads = new Map();
+// Helper: Get video info
+async function getVideoInfo(videoId: string) {
+  const url = `https://www.youtube.com/watch?v=${videoId}`;
+  const output = await runYtDlp([
+    '--dump-json',
+    '--no-warnings',
+    '--skip-download',
+    `"${url}"`
+  ]);
+  
+  return JSON.parse(output);
+}
+
+// Helper: Upload to Supabase
+async function uploadToSupabase(
+  filePath: string, 
+  filename: string, 
+  contentType: string
+): Promise<string> {
+  const fileBuffer = fs.readFileSync(filePath);
+  
+  const { data, error } = await supabase.storage
+    .from(SUPABASE_BUCKET)
+    .upload(`downloads/${filename}`, fileBuffer, {
+      contentType,
+      upsert: false
+    });
+
+  if (error) {
+    throw new Error(`Supabase upload failed: ${error.message}`);
+  }
+
+  // Get public URL
+  const { data: urlData } = supabase.storage
+    .from(SUPABASE_BUCKET)
+    .getPublicUrl(`downloads/${filename}`);
+
+  return urlData.publicUrl;
+}
+
+// Helper: Clean up temp file
+function cleanupTempFile(filePath: string) {
+  try {
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
+  } catch (err) {
+    console.error('Cleanup error:', err);
+  }
+}
 
 // Get video info
 router.get('/info', async (req, res) => {
@@ -22,17 +78,9 @@ router.get('/info', async (req, res) => {
       return res.status(400).json({ error: 'Video ID is required' });
     }
 
-    const url = `https://www.youtube.com/watch?v=${videoId}`;
-    
     console.log(`📹 Fetching info: ${videoId}`);
     
-    const info = await youtubeDl(url, {
-      dumpSingleJson: true,
-      noWarnings: true,
-      noCheckCertificates: true,
-      preferFreeFormats: true,
-      skipDownload: true,
-    })as any;
+    const info = await getVideoInfo(videoId);
     
     const title = info?.title || 'Unknown Title';
     const duration = parseInt(info?.duration) || 0;
@@ -72,10 +120,9 @@ router.get('/download-progress/:downloadId', (req, res) => {
     if (download) {
       res.write(`data: ${JSON.stringify(download)}\n\n`);
       
-      if (download.progress >= 100) {
+      if (download.progress >= 100 || download.status === 'error') {
         clearInterval(interval);
         res.end();
-        activeDownloads.delete(downloadId);
       }
     }
   }, 500);
@@ -86,6 +133,7 @@ router.get('/download-progress/:downloadId', (req, res) => {
 // Download video/audio
 router.post('/download', async (req, res) => {
   const downloadId = Date.now().toString();
+  let tempFilePath = '';
   
   try {
     const { videoId, quality = '720p', format = 'mp4' } = req.body;
@@ -96,73 +144,59 @@ router.post('/download', async (req, res) => {
 
     const url = `https://www.youtube.com/watch?v=${videoId}`;
     const timestamp = Date.now();
+    const tempDir = os.tmpdir();
     
     console.log(`\n📥 Download: ${videoId} (${format} ${quality})`);
     
     activeDownloads.set(downloadId, { 
       progress: 0, 
-      status: 'Starting...',
+      status: 'Starting download...',
       startTime: Date.now()
     });
 
-    const safeFilename = `video_${timestamp}`;
-    const outputTemplate = path.join(DOWNLOADS_DIR, `${safeFilename}.%(ext)s`);
+    // Get video info for filename
+    const info = await getVideoInfo(videoId);
+    const sanitizedTitle = (info.title || 'video')
+      .replace(/[^a-z0-9]/gi, '_')
+      .substring(0, 50);
 
     if (format === 'mp3') {
-      const child = youtubeDl.exec(url, {
-        extractAudio: true,
-        audioFormat: 'mp3',
-        audioQuality: 0,
-        output: outputTemplate,
-        noWarnings: true,
+      const filename = `${sanitizedTitle}_${timestamp}.mp3`;
+      tempFilePath = path.join(tempDir, filename);
+      
+      activeDownloads.set(downloadId, { 
+        progress: 10, 
+        status: 'Downloading audio...',
+        startTime: activeDownloads.get(downloadId)?.startTime || Date.now()
       });
+
+      // Download as mp3
+      await runYtDlp([
+        '-x',
+        '--audio-format', 'mp3',
+        '--audio-quality', '0',
+        '-o', `"${tempFilePath}"`,
+        '--no-warnings',
+        `"${url}"`
+      ]);
       
-      let lastLogged = 0;
-      
-      child.stdout?.on('data', (data) => {
-        const output = data.toString();
-        
-        if (output.includes('[download]')) {
-          const match = output.match(/(\d+\.?\d*)%/);
-          if (match) {
-            const percent = parseFloat(match[1]);
-            const adjusted = Math.min(percent * 0.7, 70);
-            
-            if (Math.floor(adjusted / 10) > Math.floor(lastLogged / 10)) {
-              console.log(`   📊 ${adjusted.toFixed(0)}%`);
-              lastLogged = adjusted;
-            }
-            
-            activeDownloads.set(downloadId, { 
-              progress: adjusted, 
-              status: 'Downloading...',
-              startTime: activeDownloads.get(downloadId)?.startTime || Date.now()
-            });
-          }
-        }
-        
-        if (output.includes('[ffmpeg]')) {
-          console.log(`   🔄 Converting...`);
-          activeDownloads.set(downloadId, { 
-            progress: 80, 
-            status: 'Converting...',
-            startTime: activeDownloads.get(downloadId)?.startTime || Date.now()
-          });
-        }
+      activeDownloads.set(downloadId, { 
+        progress: 70, 
+        status: 'Uploading to cloud...',
+        startTime: activeDownloads.get(downloadId)?.startTime || Date.now()
       });
-      
-      await child;
-      
-      const files = fs.readdirSync(DOWNLOADS_DIR);
-      const downloadedFile = files.find(f => 
-        f.includes(`video_${timestamp}`) && f.endsWith('.mp3')
+
+      // Upload to Supabase
+      const publicUrl = await uploadToSupabase(
+        tempFilePath, 
+        filename, 
+        'audio/mpeg'
       );
-
-      if (!downloadedFile) {
-        throw new Error('File not found');
-      }
-
-      const fileSize = fs.statSync(path.join(DOWNLOADS_DIR, downloadedFile)).size;
+      
+      const fileSize = fs.statSync(tempFilePath).size;
+      
+      // Cleanup
+      cleanupTempFile(tempFilePath);
       
       console.log(`✅ Complete: ${(fileSize / 1024 / 1024).toFixed(2)} MB\n`);
       
@@ -174,73 +208,54 @@ router.post('/download', async (req, res) => {
       
       return res.json({
         downloadId,
-        url: `/downloads/${downloadedFile}`,
-        filename: downloadedFile,
+        url: publicUrl,
+        filename,
         format: 'mp3',
         fileSize,
       });
       
     } else {
+      // Video download
       const ext = format === 'webm' ? 'webm' : 'mp4';
-      let formatString = 'best';
+      const filename = `${sanitizedTitle}_${timestamp}.${ext}`;
+      tempFilePath = path.join(tempDir, filename);
       
+      let formatString = 'best';
       if (quality === '720p') formatString = 'bestvideo[height<=720]+bestaudio/best[height<=720]';
       if (quality === '1080p') formatString = 'bestvideo[height<=1080]+bestaudio/best[height<=1080]';
       if (quality === '4K') formatString = 'bestvideo[height<=2160]+bestaudio/best[height<=2160]';
       
-      const child = youtubeDl.exec(url, {
-        format: formatString,
-        mergeOutputFormat: ext,
-        output: outputTemplate,
-        noWarnings: true,
+      activeDownloads.set(downloadId, { 
+        progress: 10, 
+        status: 'Downloading video...',
+        startTime: activeDownloads.get(downloadId)?.startTime || Date.now()
       });
+
+      await runYtDlp([
+        '-f', formatString,
+        '--merge-output-format', ext,
+        '-o', `"${tempFilePath}"`,
+        '--no-warnings',
+        `"${url}"`
+      ]);
       
-      let lastLogged = 0;
-      
-      child.stdout?.on('data', (data) => {
-        const output = data.toString();
-        
-        if (output.includes('[download]')) {
-          const match = output.match(/(\d+\.?\d*)%/);
-          if (match) {
-            const percent = parseFloat(match[1]);
-            const adjusted = Math.min(percent * 0.8, 80);
-            
-            if (Math.floor(adjusted / 10) > Math.floor(lastLogged / 10)) {
-              console.log(`   📊 ${adjusted.toFixed(0)}%`);
-              lastLogged = adjusted;
-            }
-            
-            activeDownloads.set(downloadId, { 
-              progress: adjusted, 
-              status: 'Downloading...',
-              startTime: activeDownloads.get(downloadId)?.startTime || Date.now()
-            });
-          }
-        }
-        
-        if (output.includes('[Merger]')) {
-          console.log(`   🔄 Merging...`);
-          activeDownloads.set(downloadId, { 
-            progress: 90, 
-            status: 'Merging...',
-            startTime: activeDownloads.get(downloadId)?.startTime || Date.now()
-          });
-        }
+      activeDownloads.set(downloadId, { 
+        progress: 70, 
+        status: 'Uploading to cloud...',
+        startTime: activeDownloads.get(downloadId)?.startTime || Date.now()
       });
-      
-      await child;
-      
-      const files = fs.readdirSync(DOWNLOADS_DIR);
-      const downloadedFile = files.find(f => 
-        f.includes(`video_${timestamp}`) && (f.endsWith('.mp4') || f.endsWith('.webm'))
+
+      // Upload to Supabase
+      const publicUrl = await uploadToSupabase(
+        tempFilePath, 
+        filename, 
+        `video/${ext}`
       );
-
-      if (!downloadedFile) {
-        throw new Error('File not found');
-      }
-
-      const fileSize = fs.statSync(path.join(DOWNLOADS_DIR, downloadedFile)).size;
+      
+      const fileSize = fs.statSync(tempFilePath).size;
+      
+      // Cleanup
+      cleanupTempFile(tempFilePath);
       
       console.log(`✅ Complete: ${(fileSize / 1024 / 1024).toFixed(2)} MB\n`);
       
@@ -252,8 +267,8 @@ router.post('/download', async (req, res) => {
       
       return res.json({
         downloadId,
-        url: `/downloads/${downloadedFile}`,
-        filename: downloadedFile,
+        url: publicUrl,
+        filename,
         format: ext,
         fileSize,
       });
@@ -261,7 +276,18 @@ router.post('/download', async (req, res) => {
     
   } catch (error: any) {
     console.error(`❌ Failed: ${error.message}\n`);
-    activeDownloads.delete(downloadId);
+    
+    // Cleanup temp file on error
+    if (tempFilePath) {
+      cleanupTempFile(tempFilePath);
+    }
+    
+    activeDownloads.set(downloadId, { 
+      progress: 0, 
+      status: 'error',
+      error: error.message
+    });
+    
     res.status(500).json({ 
       error: 'Download failed',
       details: error.message 
@@ -269,27 +295,54 @@ router.post('/download', async (req, res) => {
   }
 });
 
+// Test yt-dlp installation
 router.get('/test-ytdlp', async (req, res) => {
   try {
-    const version = await youtubeDl('--version', {});
-    res.json({ installed: true, version });
+    const version = await runYtDlp(['--version']);
+    res.json({ installed: true, version: version.trim() });
   } catch (error: any) {
     res.status(500).json({ installed: false, error: error.message });
   }
 });
 
-router.get('/list-downloads', (req, res) => {
+// List files in Supabase bucket
+router.get('/list-downloads', async (req, res) => {
   try {
-    const files = fs.readdirSync(DOWNLOADS_DIR);
-    const fileDetails = files.map(file => {
-      const stats = fs.statSync(path.join(DOWNLOADS_DIR, file));
-      return {
-        name: file,
-        size: `${(stats.size / 1024 / 1024).toFixed(2)} MB`,
-        created: stats.birthtime,
-      };
-    });
-    res.json({ files: fileDetails, directory: DOWNLOADS_DIR });
+    const { data, error } = await supabase.storage
+      .from(SUPABASE_BUCKET)
+      .list('downloads', {
+        limit: 100,
+        offset: 0,
+        sortBy: { column: 'created_at', order: 'desc' }
+      });
+
+    if (error) throw error;
+
+    const fileDetails = data.map(file => ({
+      name: file.name,
+      size: `${(file.metadata.size / 1024 / 1024).toFixed(2)} MB`,
+      created: file.created_at,
+      url: supabase.storage.from(SUPABASE_BUCKET).getPublicUrl(`downloads/${file.name}`).data.publicUrl
+    }));
+
+    res.json({ files: fileDetails, bucket: SUPABASE_BUCKET });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Optional: Delete file from Supabase
+router.delete('/delete/:filename', async (req, res) => {
+  try {
+    const { filename } = req.params;
+    
+    const { error } = await supabase.storage
+      .from(SUPABASE_BUCKET)
+      .remove([`downloads/${filename}`]);
+
+    if (error) throw error;
+
+    res.json({ success: true, message: 'File deleted' });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
