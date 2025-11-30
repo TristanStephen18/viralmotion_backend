@@ -12,6 +12,13 @@ import rendersroutes from "./routes/database/renders.ts";
 import datasetsdbupload from "./routes/database/datasetsupload.ts";
 import getDatasetFronUploadsroute from "./routes/apis/fromuploadsextraction.ts";
 import GoogleRoutes from './routes/google.ts';
+import removeBgroutes from './routes/apis/removebg.ts';
+import seeDreamRoutes from './routes/apis/seeDream.ts';
+import huggingFaceRoutes from './routes/apis/huggingFace.ts';
+import geminiImageGenRoutes from './routes/apis/imagegeneration/gemini.ts';
+import openAiImageGenRoutes from './routes/apis/imagegeneration/openai.ts';
+import huggingFaceVideoGenroutes from './routes/apis/videogeneration/huggingface.ts';
+import tavusRoutes from './routes/apis/videogeneration/tavus.ts';
 // import mainRenderingRoute from ""
 import cors from "cors";
 import fs from "fs";
@@ -55,14 +62,14 @@ app.use("/renders", rendersroutes);
 app.use("/datasets", datasetsdbupload);
 app.use("/fromuploadsdataset", getDatasetFronUploadsroute);
 app.use("/authenticate", GoogleRoutes);
+app.use('/api/picture', removeBgroutes);
+app.use('/api/seedream', seeDreamRoutes);
+app.use('/api/huggingFace', huggingFaceRoutes);
+app.use('/api/gemini-image', geminiImageGenRoutes);
+app.use('/api/openai-image', openAiImageGenRoutes);
+app.use('/api/video-generation/huggingface', huggingFaceVideoGenroutes);
+app.use('/api/video-generation/tavus', tavusRoutes);
 
 app.listen(3000, "0.0.0.0", () => {
-  // console.log(__dirname);
-  // console.log(geminiapi);
-  // console.log(path.join(process.cwd(),"./server/public/datasets"));
-  console.log("entry 1: ", fs.existsSync(entry));
-  console.log("entry 2: ", fs.existsSync(entry2));
-  console.log("disentry: ", fs.existsSync(distentry));
-  console.log(process.env.ELEVEN_LABS_API_KEY)
   console.log("Server is running on http://0.0.0.0:3000");
 });

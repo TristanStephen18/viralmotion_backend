@@ -12,7 +12,7 @@ const router = Router();
 
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID!;
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET!;
-const CLIENT_URL = process.env.CLIENT_URL || "http://localhost:5173"; // your frontend origin
+const CLIENT_URL = process.env.CLIENT_URL || "https://remotion-web-application.vercel.app"; // your frontend origin
 
 passport.use(
   new GoogleStrategy(
