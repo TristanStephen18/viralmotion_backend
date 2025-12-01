@@ -13,7 +13,19 @@ const activeDownloads = new Map();
 
 // Helper: Execute yt-dlp command
 async function runYtDlp(args: string[]): Promise<string> {
-  const command = `yt-dlp ${args.join(' ')}`;
+  // Quote arguments that contain spaces or special characters
+  const quotedArgs = args.map(arg => {
+    if (arg.includes(' ') || arg.includes('\\') || arg.includes('&') || arg.includes('?')) {
+      return `"${arg}"`;
+    }
+    return arg;
+  });
+  
+  // Use python -m yt_dlp for better cross-platform compatibility
+  const command = process.platform === 'win32' 
+    ? `python -m yt_dlp ${quotedArgs.join(' ')}`
+    : `yt-dlp ${quotedArgs.join(' ')}`;
+  
   const { stdout } = await execPromise(command);
   return stdout;
 }
@@ -25,7 +37,7 @@ async function getVideoInfo(videoId: string) {
     '--dump-json',
     '--no-warnings',
     '--skip-download',
-    `"${url}"`
+    url
   ]);
   
   return JSON.parse(output);
@@ -130,6 +142,27 @@ router.get('/download-progress/:downloadId', (req, res) => {
   req.on('close', () => clearInterval(interval));
 });
 
+// Helper: Extract video ID from YouTube URL
+function extractVideoId(input: string): string | null {
+  // If it's already just an ID (11 characters, alphanumeric)
+  if (/^[a-zA-Z0-9_-]{11}$/.test(input)) {
+    return input;
+  }
+  
+  // Match various YouTube URL formats
+  const patterns = [
+    /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([a-zA-Z0-9_-]{11})/,
+    /youtube\.com\/watch\?.*v=([a-zA-Z0-9_-]{11})/,
+  ];
+  
+  for (const pattern of patterns) {
+    const match = input.match(pattern);
+    if (match) return match[1];
+  }
+  
+  return null;
+}
+
 // Download video/audio
 router.post('/download', async (req, res) => {
   const downloadId = Date.now().toString();
@@ -175,9 +208,9 @@ router.post('/download', async (req, res) => {
         '-x',
         '--audio-format', 'mp3',
         '--audio-quality', '0',
-        '-o', `"${tempFilePath}"`,
+        '-o', tempFilePath,
         '--no-warnings',
-        `"${url}"`
+        url
       ]);
       
       activeDownloads.set(downloadId, { 
@@ -234,9 +267,9 @@ router.post('/download', async (req, res) => {
       await runYtDlp([
         '-f', formatString,
         '--merge-output-format', ext,
-        '-o', `"${tempFilePath}"`,
+        '-o', tempFilePath,
         '--no-warnings',
-        `"${url}"`
+        url
       ]);
       
       activeDownloads.set(downloadId, { 
@@ -345,6 +378,183 @@ router.delete('/delete/:filename', async (req, res) => {
     res.json({ success: true, message: 'File deleted' });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
+  }
+});
+
+// Download from YouTube URL directly
+router.post('/download-url', async (req, res) => {
+  const downloadId = Date.now().toString();
+  let tempFilePath = '';
+  
+  try {
+    const { url, quality = '720p', format = 'mp4' } = req.body;
+
+    if (!url) {
+      return res.status(400).json({ error: 'YouTube URL is required' });
+    }
+
+    // Extract video ID from URL
+    const videoId = extractVideoId(url);
+    
+    if (!videoId) {
+      return res.status(400).json({ error: 'Invalid YouTube URL' });
+    }
+
+    const youtubeUrl = `https://www.youtube.com/watch?v=${videoId}`;
+    const timestamp = Date.now();
+    const tempDir = os.tmpdir();
+    
+    console.log(`\n📥 Download from URL: ${url}`);
+    console.log(`   Video ID: ${videoId}`);
+    
+    activeDownloads.set(downloadId, { 
+      progress: 0, 
+      status: 'Starting download...',
+      startTime: Date.now()
+    });
+
+    // Get video info for filename
+    const info = await getVideoInfo(videoId);
+    const sanitizedTitle = (info.title || 'video')
+      .replace(/[^a-z0-9]/gi, '_')
+      .substring(0, 50);
+
+    if (format === 'mp3') {
+      const filename = `${sanitizedTitle}_${timestamp}.mp3`;
+      tempFilePath = path.join(tempDir, filename);
+      
+      activeDownloads.set(downloadId, { 
+        progress: 10, 
+        status: 'Downloading audio...',
+        startTime: activeDownloads.get(downloadId)?.startTime || Date.now()
+      });
+
+      // Download as mp3
+      await runYtDlp([
+        '-x',
+        '--audio-format', 'mp3',
+        '--audio-quality', '0',
+        '-o', tempFilePath,
+        '--no-warnings',
+        youtubeUrl
+      ]);
+      
+      activeDownloads.set(downloadId, { 
+        progress: 70, 
+        status: 'Uploading to cloud...',
+        startTime: activeDownloads.get(downloadId)?.startTime || Date.now()
+      });
+
+      // Upload to Supabase
+      const publicUrl = await uploadToSupabase(
+        tempFilePath, 
+        filename, 
+        'audio/mpeg'
+      );
+      
+      const fileSize = fs.statSync(tempFilePath).size;
+      
+      // Cleanup
+      cleanupTempFile(tempFilePath);
+      
+      console.log(`✅ Complete: ${(fileSize / 1024 / 1024).toFixed(2)} MB\n`);
+      
+      activeDownloads.set(downloadId, { 
+        progress: 100, 
+        status: 'Complete!',
+        startTime: activeDownloads.get(downloadId)?.startTime || Date.now()
+      });
+      
+      return res.json({
+        downloadId,
+        url: publicUrl,
+        filename,
+        format: 'mp3',
+        fileSize,
+        videoId,
+        title: info.title,
+      });
+      
+    } else {
+      // Video download
+      const ext = format === 'webm' ? 'webm' : 'mp4';
+      const filename = `${sanitizedTitle}_${timestamp}.${ext}`;
+      tempFilePath = path.join(tempDir, filename);
+      
+      let formatString = 'best';
+      if (quality === '720p') formatString = 'bestvideo[height<=720]+bestaudio/best[height<=720]';
+      if (quality === '1080p') formatString = 'bestvideo[height<=1080]+bestaudio/best[height<=1080]';
+      if (quality === '4K') formatString = 'bestvideo[height<=2160]+bestaudio/best[height<=2160]';
+      
+      activeDownloads.set(downloadId, { 
+        progress: 10, 
+        status: 'Downloading video...',
+        startTime: activeDownloads.get(downloadId)?.startTime || Date.now()
+      });
+
+      await runYtDlp([
+        '-f', formatString,
+        '--merge-output-format', ext,
+        '-o', tempFilePath,
+        '--no-warnings',
+        youtubeUrl
+      ]);
+      
+      activeDownloads.set(downloadId, { 
+        progress: 70, 
+        status: 'Uploading to cloud...',
+        startTime: activeDownloads.get(downloadId)?.startTime || Date.now()
+      });
+
+      // Upload to Supabase
+      const publicUrl = await uploadToSupabase(
+        tempFilePath, 
+        filename, 
+        `video/${ext}`
+      );
+      
+      const fileSize = fs.statSync(tempFilePath).size;
+      
+      // Cleanup
+      cleanupTempFile(tempFilePath);
+      
+      console.log(`✅ Complete: ${(fileSize / 1024 / 1024).toFixed(2)} MB\n`);
+      
+      activeDownloads.set(downloadId, { 
+        progress: 100, 
+        status: 'Complete!',
+        startTime: activeDownloads.get(downloadId)?.startTime || Date.now()
+      });
+      
+      return res.json({
+        downloadId,
+        url: publicUrl,
+        filename,
+        format: ext,
+        fileSize,
+        videoId,
+        title: info.title,
+      });
+    }
+    
+  } catch (error: any) {
+    console.error(`❌ Failed: ${error.message}\n`);
+    
+    // Cleanup temp file on error
+    if (tempFilePath) {
+      cleanupTempFile(tempFilePath);
+    }
+    
+    activeDownloads.set(downloadId, { 
+      progress: 0, 
+      status: 'error',
+      error: error.message
+    });
+    
+    res.status(500).json({ 
+      error: 'Download failed',
+      details: error.message 
+    });
   }
 });
 
