@@ -75,3 +75,22 @@ export const datasets = pgTable("datasets", {
   url: text("url").notNull(),
   uploadedAt: timestamp("uploaded_at").defaultNow().notNull(),
 });
+
+
+export const veo3Generations = pgTable("veo3_generations", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: integer("user_id")
+    .references(() => users.id)
+    .notNull(),
+  prompt: text("prompt").notNull(),
+  model: text("model").default("veo-3.1-generate-preview").notNull(),
+  duration: text("duration").default("8s").notNull(), 
+  aspectRatio: text("aspect_ratio").default("16:9").notNull(), 
+  status: text("status").$type<"pending" | "processing" | "completed" | "failed">().default("pending").notNull(),
+  videoUrl: text("video_url"), 
+  thumbnailUrl: text("thumbnail_url"), 
+  errorMessage: text("error_message"), 
+  metadata: jsonb("metadata"), 
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  completedAt: timestamp("completed_at"),
+});

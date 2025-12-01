@@ -18,6 +18,7 @@ import fs from "fs";
 import { distentry, entry, entry2 } from "./controllers/entrypoint.ts";
 import session from 'express-session';
 import passport from 'passport';
+import veo3Routes from "./routes/apis/veo3.ts";
 
 const app = express();
 app.use(cors({ origin: "*" }));
@@ -55,6 +56,7 @@ app.use("/renders", rendersroutes);
 app.use("/datasets", datasetsdbupload);
 app.use("/fromuploadsdataset", getDatasetFronUploadsroute);
 app.use("/authenticate", GoogleRoutes);
+app.use("/api/veo3", veo3Routes);
 
 app.listen(3000, "0.0.0.0", () => {
   // console.log(__dirname);

@@ -15,7 +15,7 @@
   "description": "",
   "dependencies": {
     "@elevenlabs/elevenlabs-js": "^2.24.1",
-    "@google/genai": "^1.19.0",
+    "@google/genai": "^1.30.0",
     "@google/generative-ai": "^0.24.1",
     "@neondatabase/serverless": "^1.0.1",
     "@remotion/bundler": "^4.0.363",
