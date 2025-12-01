@@ -27,6 +27,9 @@ import audioRoutes from './routes/tools/audio.ts';
 import enhanceSpeechRoutes from './routes/tools/enhanceSpeech.ts';
 // import remixVideo from './routes/tools/remixVideo.ts';
 // import mainRenderingRoute from ""
+
+//additional veo3routes by laun
+import veo3GenerationRoutes from './routes/veo3.ts';
 import cors from "cors";
 import session from 'express-session';
 import passport from 'passport';
@@ -79,6 +82,7 @@ app.use('/api/youtube', ytRoutes);
 app.use('/api/tools/audio',audioRoutes);
 app.use('/api/tools/speech-enhancement', enhanceSpeechRoutes);
 app.use('/api/video-generation/google', googleStudioRoutes);
+app.use('/api/veo3-video-generation', veo3GenerationRoutes);
 
 app.listen(3000, "0.0.0.0", () => {
   console.log("Server is running on http://0.0.0.0:3000");
