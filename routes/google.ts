@@ -12,14 +12,14 @@ const router = Router();
 
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID!;
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET!;
-const CLIENT_URL = process.env.CLIENT_URL || "http://localhost:5173"; // your frontend origin
+const CLIENT_URL = process.env.CLIENT_URL || "https://remotion-web-application.vercel.app"; // your frontend origin
 
 passport.use(
   new GoogleStrategy(
     {
       clientID: GOOGLE_CLIENT_ID,
       clientSecret: GOOGLE_CLIENT_SECRET,
-      callbackURL: "http://localhost:3000/authenticate/google/callback",
+      callbackURL: "https://viralmotion-backend-ghxi.onrender.com/authenticate/google/callback",
     },
     async (
       accessToken: string,
