@@ -87,6 +87,7 @@ export const veo3Generations = pgTable("veo3_generations", {
   aspectRatio: text("aspect_ratio").default("16:9").notNull(),
   status: text("status").$type<"pending" | "processing" | "completed" | "failed">().default("pending").notNull(),
   videoUrl: text("video_url"),
+  referenceImageUrl: text("reference_image_url"),
   thumbnailUrl: text("thumbnail_url"),
   errorMessage: text("error_message"),
   metadata: jsonb("metadata"),
