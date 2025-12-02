@@ -95,3 +95,23 @@ export const veo3Generations = pgTable("veo3_generations", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
   completedAt: timestamp("completed_at"),
 });
+
+export const youtubeDownloads = pgTable("youtube_downloads", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: integer("user_id").references(() => users.id).notNull(),
+  videoId: text("video_id").notNull(),
+  videoUrl: text("video_url").notNull(),
+  title: text("title").notNull(),
+  thumbnail: text("thumbnail"),
+  duration: text("duration"),
+  views: text("views"),
+  likes: text("likes"),
+  quality: text("quality").notNull(), // 1080p, 720p, 480p
+  filesize: integer("filesize"), // in bytes
+  downloadedVideoUrl: text("downloaded_video_url"), // Cloudinary URL
+  status: text("status").$type<"pending" | "processing" | "completed" | "failed">().default("pending").notNull(),
+  errorMessage: text("error_message"),
+  metadata: jsonb("metadata"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  completedAt: timestamp("completed_at"),
+});
