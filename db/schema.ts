@@ -92,4 +92,6 @@ export const veo3Generations = pgTable("veo3_generations", {
   metadata: jsonb("metadata"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   completedAt: timestamp("completed_at"),
+  referenceImageUrl: text("reference_image_url"),
+  referenceType: text("reference_type"),
 });

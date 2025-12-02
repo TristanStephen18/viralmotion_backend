@@ -7,14 +7,13 @@ import { v2 as cloudinary } from "cloudinary";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+import axios from "axios";
 
-// Initialize Google Gemini AI
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Only Veo 3.1 models are supported by generateVideos right now.
 const SUPPORTED_MODELS = new Set([
   "veo-3.1-generate-preview",
   "veo-3.1-fast-generate-preview",
@@ -33,25 +32,49 @@ export const generateVideo = async (req: Request, res: Response) => {
       return res.status(401).json({ success: false, error: "Unauthorized" });
     }
 
-    const { prompt, model, duration, aspectRatio } = req.body;
+    const { prompt, model, duration, aspectRatio, referenceType } = req.body;
 
     if (!prompt || prompt.trim().length === 0) {
-      return res.status(400).json({ success: false, error: "Prompt is required" });
+      return res
+        .status(400)
+        .json({ success: false, error: "Prompt is required" });
     }
 
-    // Normalize model selection
+    // Handle reference image from multer
+    const file = (req as any).file as Express.Multer.File | undefined;
+    let referenceImageUrl: string | null = null;
+
+    if (file) {
+      try {
+        const uploadResult = await cloudinary.uploader.upload(file.path, {
+          folder: "veo3_reference_images",
+          resource_type: "image",
+        });
+        referenceImageUrl = uploadResult.secure_url;
+        console.log("[VEO3] Reference image uploaded:", referenceImageUrl);
+      } catch (uploadErr) {
+        console.error("[VEO3] Reference image upload error:", uploadErr);
+      } finally {
+        if (file.path && fs.existsSync(file.path)) {
+          fs.unlinkSync(file.path);
+        }
+      }
+    }
+
+    // Normalize model
     const requestedModel = typeof model === "string" ? model : "";
     const modelId = SUPPORTED_MODELS.has(requestedModel)
       ? requestedModel
       : "veo-3.1-generate-preview";
 
-    // Clamp duration between 4s and 8s (Gemini’s allowed range)
+    // ✅ FIX: Only allow 4s or 8s
     const parsedDuration = Number(duration);
-    const durationSeconds = Number.isFinite(parsedDuration)
-      ? Math.min(Math.max(parsedDuration, 4), 8)
-      : 8;
+    const durationSeconds = parsedDuration === 4 ? 4 : 8;
 
     const ratio = aspectRatio || "16:9";
+
+    // ✅ Store reference type
+    const refType = referenceType || 'ASSET';
 
     const [generation] = await db
       .insert(veo3Generations)
@@ -62,6 +85,8 @@ export const generateVideo = async (req: Request, res: Response) => {
         duration: `${durationSeconds}s`,
         aspectRatio: ratio,
         status: "pending",
+        referenceImageUrl,
+        referenceType: refType, 
       })
       .returning();
 
@@ -81,9 +106,14 @@ export const generateVideo = async (req: Request, res: Response) => {
       prompt.trim(),
       modelId,
       durationSeconds,
-      ratio
+      ratio,
+      referenceImageUrl,
+      refType 
     ).catch((error) => {
-      console.error(`[VEO3] Async processing error for ${generation.id}:`, error);
+      console.error(
+        `[VEO3] Async processing error for ${generation.id}:`,
+        error
+      );
     });
   } catch (error) {
     console.error("[VEO3] Generation error:", error);
@@ -102,39 +132,85 @@ async function processVideoGeneration(
   prompt: string,
   model: string,
   duration: number,
-  aspectRatio: string
+  aspectRatio: string,
+  referenceImageUrl?: string | null,
+  referenceType?: string
 ) {
   try {
     console.log(`[VEO3] Starting generation for: ${generationId}`);
-    console.log(`[VEO3] Model: ${model}, Duration: ${duration}s, Aspect: ${aspectRatio}`);
+    console.log(
+      `[VEO3] Model: ${model}, Duration: ${duration}s, Aspect: ${aspectRatio}`
+    );
 
-    // Update status to processing
     await db
       .update(veo3Generations)
       .set({ status: "processing" })
       .where(eq(veo3Generations.id, generationId));
 
-    // Generate video using Google Gemini VEO3
-    let operation = await ai.models.generateVideos({
-      model: model,
-      prompt: prompt,
-      config: {
-        aspectRatio: aspectRatio,
-        durationSeconds: duration,
-        resolution: "720p", // or "1080p" for higher quality
+    // ✅ Build config with reference image support
+    const config: any = {
+      aspectRatio,
+      durationSeconds: duration,
+      resolution: "720p",
+    };
+
+    // ❌ TEMPORARILY DISABLE REFERENCE IMAGES UNTIL GOOGLE ENABLES IT
+    // if (referenceImageUrl) {
+    //   console.log(`[VEO3] Fetching reference image: ${referenceImageUrl}`);
+      
+    //   try {
+    //     // Download the image from Cloudinary
+    //     const imageResponse = await axios.get(referenceImageUrl, {
+    //       responseType: 'arraybuffer',
+    //       timeout: 30000, // 30 second timeout
+    //     });
         
-      },
+    //     const imageBuffer = Buffer.from(imageResponse.data);
+    //     const imageBase64 = imageBuffer.toString('base64');
+        
+    //     // Infer MIME type from URL
+    //     const mimeType = referenceImageUrl.match(/\.(jpg|jpeg)$/i) 
+    //       ? 'image/jpeg' 
+    //       : referenceImageUrl.match(/\.png$/i)
+    //       ? 'image/png'
+    //       : 'image/jpeg';
+        
+    //     config.referenceImages = [
+    //       {
+    //         image: {
+    //           imageBytes: imageBase64,
+    //           mimeType: mimeType,
+    //         },
+    //         referenceType: referenceType || 'ASSET',
+    //       }
+    //     ];
+        
+    //     console.log(
+    //       `[VEO3] Reference image added to config (type: ${referenceType || 'ASSET'})`
+    //     );
+    //   } catch (imgError) {
+    //     console.error('[VEO3] Failed to fetch reference image:', imgError);
+    //     // Continue without reference image rather than failing
+    //   }
+    // }
+
+    console.log(`[VEO3] Calling ai.models.generateVideos...`);
+
+    const operationStart = await ai.models.generateVideos({
+      model,
+      prompt: prompt,
+      config: config,
     });
 
+    let operation = operationStart;
     console.log(`[VEO3] Operation started: ${operation.name}`);
 
-    // Poll the operation status until video is ready
+    // Poll for completion
     let attempts = 0;
-    const maxAttempts = 60; // 10 minutes max (10s interval)
-
+    const maxAttempts = 60;
     while (!operation.done && attempts < maxAttempts) {
       console.log(`[VEO3] Waiting... (${attempts + 1}/${maxAttempts})`);
-      await new Promise((resolve) => setTimeout(resolve, 10000)); // Wait 10 seconds
+      await new Promise((resolve) => setTimeout(resolve, 10000));
       operation = await ai.operations.getVideosOperation({ operation });
       attempts++;
     }
@@ -142,29 +218,25 @@ async function processVideoGeneration(
     if (!operation.done) {
       throw new Error("Video generation timeout");
     }
-
     if (!operation.response?.generatedVideos?.[0]) {
       throw new Error("No video generated");
     }
 
-    console.log(`[VEO3] Video generation completed`);
-
+    console.log(`[VEO3] Video generation completed for ${generationId}`);
     const generatedVideo = operation.response.generatedVideos[0];
-    
-    // Create temp directory if it doesn't exist
-   const outputsDir = path.join(__dirname, "../outputs");
+
+    // Create temp directory
+    const outputsDir = path.join(__dirname, "../../outputs");
     if (!fs.existsSync(outputsDir)) {
       fs.mkdirSync(outputsDir, { recursive: true });
     }
 
-    // Download the video file
+    // Download video
     const tempVideoPath = path.join(outputsDir, `${generationId}_temp.mp4`);
-    
     await ai.files.download({
       file: generatedVideo.video,
       downloadPath: tempVideoPath,
     });
-
     console.log(`[VEO3] Video downloaded to: ${tempVideoPath}`);
 
     // Upload to Cloudinary
@@ -173,14 +245,17 @@ async function processVideoGeneration(
       folder: "veo3_generations",
       public_id: generationId,
     });
-
-    console.log(`[VEO3] Uploaded to Cloudinary: ${cloudinaryResult.secure_url}`);
+    console.log(
+      `[VEO3] Uploaded to Cloudinary: ${cloudinaryResult.secure_url}`
+    );
 
     // Generate thumbnail
     const thumbnailUrl = cloudinary.url(generationId, {
       resource_type: "video",
       format: "jpg",
-      transformation: [{ width: 640, height: 360, crop: "fill", start_offset: "1" }],
+      transformation: [
+        { width: 640, height: 360, crop: "fill", start_offset: "1" },
+      ],
     });
 
     // Clean up temp file
@@ -188,7 +263,7 @@ async function processVideoGeneration(
       fs.unlinkSync(tempVideoPath);
     }
 
-    // Update generation record with success
+    // Update generation record
     await db
       .update(veo3Generations)
       .set({
@@ -202,6 +277,8 @@ async function processVideoGeneration(
           size: cloudinaryResult.bytes,
           width: cloudinaryResult.width,
           height: cloudinaryResult.height,
+          referenceImageUsed: !!referenceImageUrl,
+          referenceType: referenceType,
         },
       })
       .where(eq(veo3Generations.id, generationId));
@@ -209,12 +286,13 @@ async function processVideoGeneration(
     console.log(`[VEO3] ✅ Completed: ${generationId}`);
   } catch (error) {
     console.error(`[VEO3] ❌ Error:`, error);
-    
+
     await db
       .update(veo3Generations)
       .set({
         status: "failed",
-        errorMessage: error instanceof Error ? error.message : "Unknown error",
+        errorMessage:
+          error instanceof Error ? error.message : "Unknown error",
       })
       .where(eq(veo3Generations.id, generationId));
   }
@@ -227,7 +305,7 @@ async function processVideoGeneration(
 export const getGenerations = async (req: Request, res: Response) => {
   try {
     const authUser = (req as any).user;
-const userId = authUser?.id ?? authUser?.userId;
+    const userId = authUser?.id ?? authUser?.userId;
     if (!userId) {
       return res.status(401).json({ success: false, error: "Unauthorized" });
     }
@@ -246,7 +324,9 @@ const userId = authUser?.id ?? authUser?.userId;
     res.json({ success: true, generations });
   } catch (error) {
     console.error("[VEO3] Get generations error:", error);
-    res.status(500).json({ success: false, error: "Failed to fetch generations" });
+    res
+      .status(500)
+      .json({ success: false, error: "Failed to fetch generations" });
   }
 };
 
@@ -257,7 +337,7 @@ const userId = authUser?.id ?? authUser?.userId;
 export const getGenerationById = async (req: Request, res: Response) => {
   try {
     const authUser = (req as any).user;
-const userId = authUser?.id ?? authUser?.userId;
+    const userId = authUser?.id ?? authUser?.userId;
     if (!userId) {
       return res.status(401).json({ success: false, error: "Unauthorized" });
     }
@@ -270,7 +350,9 @@ const userId = authUser?.id ?? authUser?.userId;
       .where(eq(veo3Generations.id, id));
 
     if (!generation) {
-      return res.status(404).json({ success: false, error: "Generation not found" });
+      return res
+        .status(404)
+        .json({ success: false, error: "Generation not found" });
     }
 
     if (generation.userId !== userId) {
@@ -280,7 +362,9 @@ const userId = authUser?.id ?? authUser?.userId;
     res.json({ success: true, generation });
   } catch (error) {
     console.error("[VEO3] Get generation error:", error);
-    res.status(500).json({ success: false, error: "Failed to fetch generation" });
+    res
+      .status(500)
+      .json({ success: false, error: "Failed to fetch generation" });
   }
 };
 
@@ -291,7 +375,7 @@ const userId = authUser?.id ?? authUser?.userId;
 export const deleteGeneration = async (req: Request, res: Response) => {
   try {
     const authUser = (req as any).user;
-const userId = authUser?.id ?? authUser?.userId;
+    const userId = authUser?.id ?? authUser?.userId;
     if (!userId) {
       return res.status(401).json({ success: false, error: "Unauthorized" });
     }
@@ -304,11 +388,32 @@ const userId = authUser?.id ?? authUser?.userId;
       .where(eq(veo3Generations.id, id));
 
     if (!generation) {
-      return res.status(404).json({ success: false, error: "Generation not found" });
+      return res
+        .status(404)
+        .json({ success: false, error: "Generation not found" });
     }
 
     if (generation.userId !== userId) {
       return res.status(403).json({ success: false, error: "Forbidden" });
+    }
+
+    if (generation.referenceImageUrl) {
+      try {
+        const url = new URL(generation.referenceImageUrl);
+        const parts = url.pathname.split("/");
+
+        const filename = parts[parts.length - 1];
+        const folder = parts[parts.length - 2];
+        const publicId = `${folder}/${filename.split(".")[0]}`;
+
+        await cloudinary.uploader.destroy(publicId, { resource_type: "image" });
+        console.log(
+          "[VEO3] Reference image deleted from Cloudinary:",
+          publicId
+        );
+      } catch (refErr) {
+        console.error("[VEO3] Reference image deletion error:", refErr);
+      }
     }
 
     // Delete from Cloudinary
@@ -326,66 +431,8 @@ const userId = authUser?.id ?? authUser?.userId;
     res.json({ success: true, message: "Generation deleted successfully" });
   } catch (error) {
     console.error("[VEO3] Delete generation error:", error);
-    res.status(500).json({ success: false, error: "Failed to delete generation" });
-  }
-
-  
-
-};
-
-export const testGenerateVideo = async (req: Request, res: Response) => {
-  try {
-    const { prompt } = req.body;
-
-    if (!prompt || prompt.trim().length === 0) {
-      return res.status(400).json({ success: false, error: "Prompt is required" });
-    }
-
-    console.log(`[VEO3 TEST] Starting test with prompt: ${prompt}`);
-
-    // Generate video with minimal config
-    let operation = await ai.models.generateVideos({
-      model: "veo-3.1-generate-preview",
-      prompt: prompt,
-      // ✅ Use defaults - no config
-    });
-
-    console.log(`[VEO3 TEST] Operation started: ${operation.name}`);
-
-    let attempts = 0;
-    const maxAttempts = 60;
-
-    while (!operation.done && attempts < maxAttempts) {
-      console.log(`[VEO3 TEST] Waiting... (${attempts + 1}/${maxAttempts})`);
-      await new Promise((resolve) => setTimeout(resolve, 10000));
-      operation = await ai.operations.getVideosOperation({ operation });
-      attempts++;
-    }
-
-    if (!operation.done) {
-      throw new Error("Timeout - video generation took too long");
-    }
-
-    if (!operation.response?.generatedVideos?.[0]) {
-      throw new Error("No video generated in response");
-    }
-
-    const generatedVideo = operation.response.generatedVideos[0];
-    
-    console.log(`[VEO3 TEST] ✅ Video generated successfully!`);
-
-    res.json({
-      success: true,
-      message: "Test video generated successfully!",
-      operationName: operation.name,
-      videoGenerated: true,
-    });
-
-  } catch (error) {
-    console.error("[VEO3 TEST] ❌ Error:", error);
-    res.status(500).json({
-      success: false,
-      error: error instanceof Error ? error.message : "Failed to generate test video",
-    });
+    res
+      .status(500)
+      .json({ success: false, error: "Failed to delete generation" });
   }
 };

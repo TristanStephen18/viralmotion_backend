@@ -3,6 +3,7 @@ export interface VEO3GenerationRequest {
   model: "veo-3.1-generate-preview" | "veo-3.1-fast-generate-preview" | "veo-3.0-generate-preview";
   duration: "5" | "8";
   aspectRatio: "16:9" | "9:16" | "1:1";
+  referenceType?: "ASSET" | "STYLE";
 }
 
 export interface VEO3Generation {
@@ -19,6 +20,8 @@ export interface VEO3Generation {
   metadata: Record<string, any> | null;
   createdAt: Date;
   completedAt: Date | null;
+  referenceImageUrl?: string | null;
+  referenceType?: string | null;
 }
 
 export interface VEO3APIResponse {
