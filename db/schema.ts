@@ -88,6 +88,7 @@ export const veo3Generations = pgTable("veo3_generations", {
   status: text("status").$type<"pending" | "processing" | "completed" | "failed">().default("pending").notNull(),
   videoUrl: text("video_url"),
   referenceImageUrl: text("reference_image_url"),
+  referenceType: text("reference_type"),
   thumbnailUrl: text("thumbnail_url"),
   errorMessage: text("error_message"),
   metadata: jsonb("metadata"),
