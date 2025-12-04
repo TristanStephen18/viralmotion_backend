@@ -30,6 +30,8 @@ import cors from "cors";
 import session from 'express-session';
 import passport from 'passport';
 import veo3Routes from "./routes/apis/veo3.ts";
+import youtubeRoutes from './routes/apis/youtube.ts';
+
 
 const app = express();
 app.use(cors({ origin: "*" }));
@@ -79,6 +81,7 @@ app.use('/api/youtube', ytRoutes);
 app.use('/api/tools/audio',audioRoutes);
 app.use('/api/tools/speech-enhancement', enhanceSpeechRoutes);
 app.use("/api/veo3", veo3Routes);
+app.use('/api/youtube-v2', youtubeRoutes);
 
 app.listen(3000, "0.0.0.0", () => {
   console.log("Server is running on http://0.0.0.0:3000");
