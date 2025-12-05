@@ -6,7 +6,8 @@ import {
   integer,
   jsonb,
   uuid,
-  boolean
+  boolean,
+  index
 } from "drizzle-orm/pg-core";
 
 export const users = pgTable("users", {
@@ -18,6 +19,16 @@ export const users = pgTable("users", {
   profilePicture: text("profile_picture"), 
   createdAt: timestamp("created_at").defaultNow().notNull(),
   verified: boolean("verified").default(false).notNull(),
+
+  // 2FA fields
+  twoFactorEnabled: boolean("two_factor_enabled").default(false).notNull(),
+  twoFactorSecret: text("two_factor_secret"),
+  
+  // Account security fields
+  accountLocked: boolean("account_locked").default(false).notNull(),
+  lockoutUntil: timestamp("lockout_until"),
+  lastLogin: timestamp("last_login"),
+  passwordChangedAt: timestamp("password_changed_at"),
 });
 
 export const templates = pgTable("templates", {
@@ -115,3 +126,42 @@ export const youtubeDownloads = pgTable("youtube_downloads", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
   completedAt: timestamp("completed_at"),
 });
+
+export const refreshTokens = pgTable("refresh_tokens", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: integer("user_id")
+    .references(() => users.id, { onDelete: "cascade" })
+    .notNull(),
+  token: text("token").notNull().unique(),
+  expiresAt: timestamp("expires_at").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  ipAddress: text("ip_address"),
+  userAgent: text("user_agent"),
+  revoked: boolean("revoked").default(false).notNull(),
+  revokedAt: timestamp("revoked_at"),
+}, (table) => ({
+  userIdIdx: index("refresh_tokens_user_id_idx").on(table.userId),
+  tokenIdx: index("refresh_tokens_token_idx").on(table.token),
+}));
+
+// Login attempts tracking for rate limiting
+export const loginAttempts = pgTable("login_attempts", {
+  id: serial("id").primaryKey(),
+  email: text("email").notNull(),
+  ipAddress: text("ip_address").notNull(),
+  attemptedAt: timestamp("attempted_at").defaultNow().notNull(),
+  successful: boolean("successful").notNull(),
+}, (table) => ({
+  emailIdx: index("login_attempts_email_idx").on(table.email),
+  ipIdx: index("login_attempts_ip_idx").on(table.ipAddress),
+}));
+
+// Blacklisted tokens for secure logout
+export const blacklistedTokens = pgTable("blacklisted_tokens", {
+  id: serial("id").primaryKey(),
+  token: text("token").notNull().unique(),
+  blacklistedAt: timestamp("blacklisted_at").defaultNow().notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
+}, (table) => ({
+  tokenIdx: index("blacklisted_tokens_token_idx").on(table.token),
+}));

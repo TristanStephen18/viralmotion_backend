@@ -5,21 +5,44 @@ import type { Profile } from "passport-google-oauth20";
 import { eq } from "drizzle-orm";
 import { users } from "../db/schema.ts";
 import { db } from "../db/client.ts";
+import {
+  generateAccessToken,
+  generateRefreshToken,
+  storeRefreshToken,
+} from "../utils/tokens.ts";
+import {
+  setAccessTokenCookie,
+  setRefreshTokenCookie,
+} from "../utils/cookies.ts";
 
 const { Strategy: GoogleStrategy } = pkg;
-
 const router = Router();
 
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID!;
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET!;
-const CLIENT_URL = process.env.CLIENT_URL || "https://remotion-web-application.vercel.app"; // your frontend origin
+
+// ✅ FIXED: Dynamic URLs based on environment
+const isDevelopment = process.env.NODE_ENV !== "production";
+const CLIENT_URL = isDevelopment 
+  ? "http://localhost:5173" 
+  : (process.env.CLIENT_URL || "https://remotion-web-application.vercel.app");
+const BACKEND_URL = isDevelopment 
+  ? "http://localhost:3000" 
+  : (process.env.BACKEND_URL || "https://viralmotion-backend-ghxi.onrender.com");
+
+console.log(`🔧 OAuth Config: Backend=${BACKEND_URL}, Client=${CLIENT_URL}`);
+
+// ✅ SECURE: Validate OAuth credentials
+if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
+  throw new Error("Google OAuth credentials not configured");
+}
 
 passport.use(
   new GoogleStrategy(
     {
       clientID: GOOGLE_CLIENT_ID,
       clientSecret: GOOGLE_CLIENT_SECRET,
-      callbackURL: "https://viralmotion-backend-ghxi.onrender.com/authenticate/google/callback",
+      callbackURL: `${BACKEND_URL}/authenticate/google/callback`,
     },
     async (
       accessToken: string,
@@ -28,49 +51,56 @@ passport.use(
       done: (error: any, user?: any) => void
     ) => {
       try {
-        // Here you would normally check if the user exists in DB
-        // For demo purposes, we’ll just return the profile
-        const user = {
-          googleId: profile.id,
-          name: profile.displayName,
-          email: profile.emails?.[0].value,
-          photo: profile.photos?.[0].value,
-        };
+        const email = profile.emails?.[0].value;
+        const name = profile.displayName;
+        const photo = profile.photos?.[0].value;
 
-        // Simulate DB call / user creation
-        console.log("✅ Google user:", user);
-        const existing = await db
+        if (!email) {
+          return done(new Error("No email provided by Google"), undefined);
+        }
+
+        // ✅ SECURE: Check if user exists
+        const [existing] = await db
           .select()
           .from(users)
-          .where(eq(users.email, String(user.email)));
+          .where(eq(users.email, email));
 
-        if (existing.length > 0) {
-          console.log("Account already in use proceeding to login");
-        } else {
+        let user;
+
+        if (existing) {
+          // ✅ Update last login
           await db
+            .update(users)
+            .set({ lastLogin: new Date() })
+            .where(eq(users.id, existing.id));
+          
+          user = existing;
+        } else {
+          // ✅ Create new user
+          const [newUser] = await db
             .insert(users)
             .values({
-              email: String(user.email),
-              name: user.name,
+              email,
+              name,
               provider: "google",
-              passwordHash: "",
-              profilePicture: user.photo,
-              verified: true,
+              passwordHash: "", // No password for OAuth users
+              profilePicture: photo,
+              verified: true, // Google accounts are pre-verified
             })
             .returning();
+          
+          user = newUser;
         }
 
         return done(null, user);
       } catch (err) {
+        console.error("Google OAuth error:", err);
         return done(err, undefined);
       }
     }
   )
 );
 
-// ----------------------------
-// 🧭 Passport Session Handling
-// ----------------------------
 passport.serializeUser((user: any, done) => {
   done(null, user);
 });
@@ -79,11 +109,7 @@ passport.deserializeUser((user: any, done) => {
   done(null, user);
 });
 
-// ----------------------------
-// 🚀 Routes
-// ----------------------------
-
-// Step 1: Start Google Login
+// Start Google Login
 router.get(
   "/google",
   passport.authenticate("google", {
@@ -91,30 +117,51 @@ router.get(
   })
 );
 
+// Google callback with token generation
 router.get(
   "/google/callback",
   passport.authenticate("google", {
-    failureRedirect: `${CLIENT_URL}/auth?error=google_failed`,
-    session: true,
+    failureRedirect: `${CLIENT_URL}/login?error=google_failed`,
+    session: false,
   }),
-  (req, res) => {
-    const email = (req.user as any)?.email;
-    const name = (req.user as any)?.name;
-    const encodedEmail = encodeURIComponent(email);
+  async (req, res) => {
+    try {
+      const user = req.user as any;
 
-    res.redirect(`${CLIENT_URL}/loading?email=${encodedEmail}`);
+      if (!user || !user.id || !user.email) {
+        return res.redirect(`${CLIENT_URL}/login?error=auth_failed`);
+      }
+
+      // Generate tokens
+      const accessToken = generateAccessToken({ userId: user.id, email: user.email });
+      const refreshToken = generateRefreshToken({ userId: user.id, email: user.email });
+
+      // Store refresh token
+      const ipAddress = req.ip || req.socket.remoteAddress || "unknown";
+      const userAgent = req.headers["user-agent"] || "unknown";
+      await storeRefreshToken(user.id, refreshToken, ipAddress, userAgent);
+
+      // Set HTTP-only cookies
+      setAccessTokenCookie(res, accessToken);
+      setRefreshTokenCookie(res, refreshToken);
+
+      // ✅ FIXED: Redirect to client's loading page with token
+      console.log(`✅ Redirecting to: ${CLIENT_URL}/loading?token=${accessToken.substring(0, 20)}...&email=${user.email}`);
+      res.redirect(`${CLIENT_URL}/loading?token=${accessToken}&email=${encodeURIComponent(user.email)}`);
+    } catch (err) {
+      console.error("Google callback error:", err);
+      res.redirect(`${CLIENT_URL}/login?error=server_error`);
+    }
   }
 );
 
-// Step 3: Get current logged user (optional)
 router.get("/google/user", (req, res) => {
   if (!req.user) {
-    return res.status(401).json({ message: "Not authenticated" });
+    return res.status(401).json({ error: "Not authenticated" });
   }
-  res.json(req.user);
+  res.json({ success: true, user: req.user });
 });
 
-// Step 4: Logout route
 router.get("/google/logout", (req, res) => {
   req.logout(() => {
     res.redirect(CLIENT_URL);

@@ -5,14 +5,22 @@ import { JWT_SECRET } from "../database/config.ts";
 sgMail.setApiKey(process.env.SENDGRID_API_KEY as string);
 
 export async function sendEmailVerification(userId: number, email: string, baseUrl: string) {
+  console.log("📧 [SendGrid] Preparing to send verification email");
+  console.log("📧 [SendGrid] To:", email);
+  console.log("📧 [SendGrid] From:", "viralmotion.app@gmail.com");
+  console.log("📧 [SendGrid] API Key exists:", !!process.env.SENDGRID_API_KEY);
+  console.log("📧 [SendGrid] API Key starts with:", process.env.SENDGRID_API_KEY?.substring(0, 10));
+
   const token = jwt.sign({ userId }, JWT_SECRET, { expiresIn: "1h" });
   const url = `${baseUrl}/auth/verify?token=${token}`;
+
+  console.log("📧 [SendGrid] Verification URL:", url);
 
   const msg = {
     to: email,
     from: {
       name: "Viral Motion",
-      email: "viralmotion.app@gmail.com", // or your verified sender (e.g., viralmotion@gmail.com)
+      email: "viralmotion.app@gmail.com",
     },
     subject: "Verify Your Email",
     text: `Click this link to verify your account: ${url}`,
@@ -27,17 +35,25 @@ export async function sendEmailVerification(userId: number, email: string, baseU
             Verify Email
           </a>
         </p>
-        <p>If the button doesn’t work, copy and paste this link:</p>
+        <p>If the button doesn't work, copy and paste this link:</p>
         <p><a href="${url}">${url}</a></p>
       </div>
     `,
   };
 
+  console.log("📧 [SendGrid] Sending email...");
+
   try {
-    await sgMail.send(msg);
-    console.log("✅ Verification email sent successfully!");
+    const response = await sgMail.send(msg);
+    console.log("✅ [SendGrid] Email sent successfully!");
+    console.log("✅ [SendGrid] Response status:", response[0]?.statusCode);
+    console.log("✅ [SendGrid] Response headers:", JSON.stringify(response[0]?.headers, null, 2));
   } catch (error: any) {
-    console.error("❌ Email send error:", error.response?.body || error.message);
+    console.error("❌ [SendGrid] Email send error:");
+    console.error("❌ [SendGrid] Status code:", error.code);
+    console.error("❌ [SendGrid] Message:", error.message);
+    console.error("❌ [SendGrid] Response body:", JSON.stringify(error.response?.body, null, 2));
+    throw error; // Re-throw so signup route knows it failed
   }
 }
 
