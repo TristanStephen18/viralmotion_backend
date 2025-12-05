@@ -19,7 +19,8 @@ export const users = pgTable("users", {
   profilePicture: text("profile_picture"), 
   createdAt: timestamp("created_at").defaultNow().notNull(),
   verified: boolean("verified").default(false).notNull(),
-   // 2FA fields
+
+  // 2FA fields
   twoFactorEnabled: boolean("two_factor_enabled").default(false).notNull(),
   twoFactorSecret: text("two_factor_secret"),
   
@@ -116,9 +117,9 @@ export const youtubeDownloads = pgTable("youtube_downloads", {
   duration: text("duration"),
   views: text("views"),
   likes: text("likes"),
-  quality: text("quality").notNull(), // 1080p, 720p, 480p
-  filesize: integer("filesize"), // in bytes
-  downloadedVideoUrl: text("downloaded_video_url"), // Cloudinary URL
+  quality: text("quality").notNull(), 
+  filesize: integer("filesize"), 
+  downloadedVideoUrl: text("downloaded_video_url"), 
   status: text("status").$type<"pending" | "processing" | "completed" | "failed">().default("pending").notNull(),
   errorMessage: text("error_message"),
   metadata: jsonb("metadata"),
