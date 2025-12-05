@@ -40,8 +40,7 @@ RUN npm install
  
 COPY . . 
  
-# Build your Remotion project 
-RUN cd remotion_templates/TemplateHolder && npm install && cd ../.. && npm run build 
+RUN npm run build 
  
 EXPOSE 10000 
  
