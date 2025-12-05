@@ -885,8 +885,9 @@ const splitScreenDefaultValues = {
 
 const kenburnsDefaultValues = {
   images: [
-    "https://res.cloudinary.com/dnxc1lw18/image/upload/v1761129731/kenburns/kenburns_9927743b-d42e-44c1-a144-0383df574eb1.jpg",
-    "https://res.cloudinary.com/dnxc1lw18/image/upload/v1761129732/kenburns/kenburns_9c6e7665-3f95-4ed4-bce6-d814c9088cc6.jpg",
+    "https://res.cloudinary.com/dnxc1lw18/image/upload/v1760980834/bg19_geq7pm.jpg",
+    "https://res.cloudinary.com/dnxc1lw18/image/upload/v1760980834/bg16_awol1q.jpg",
+    "https://res.cloudinary.com/dnxc1lw18/image/upload/v1760980833/bg18_hsnzjc.jpg"
   ],
   cardWidthRatio: 0.75,
   cardHeightRatio: 0.75,

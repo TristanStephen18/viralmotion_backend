@@ -26,8 +26,57 @@ import {
 } from "./components/FlipCards";
 import { LogoCompositionComponent } from "./components/LogoAnimation";
 import * as defaultValues from "./defaultvalues";
+import { TestTextComposition } from "./components/SampleTemplate";
+import {
+  DynamicTemplate,
+  Layer,
+} from "./components/DynamicLayerComposition";
 
 type Derived = React.ComponentProps<typeof ChatVideo2>;
+
+const exampleLayers: Layer[] = [
+  {
+    id: "bg-1",
+    name: "Background",
+    type: "image",
+    visible: true,
+    locked: false,
+    startFrame: 0,
+    endFrame: 300,
+    position: { x: 50, y: 50 },
+    size: { width: 100, height: 100 },
+    rotation: 0,
+    opacity: 1,
+    src: "https://images.unsplash.com/photo-1579546929518-9e396f3cc809?w=1920",
+    isBackground: true,
+    objectFit: "cover",
+  },
+  {
+    id: "text-1",
+    name: "Title",
+    type: "text",
+    visible: true,
+    locked: false,
+    startFrame: 30,
+    endFrame: 300,
+    position: { x: 50, y: 30 },
+    size: { width: 80, height: 20 },
+    rotation: 0,
+    opacity: 1,
+    content: "Hello World",
+    fontFamily: "Arial, sans-serif",
+    fontSize: 10,
+    fontColor: "#ffffff",
+    fontWeight: "bold",
+    fontStyle: "normal",
+    textAlign: "center",
+    lineHeight: 1.2,
+    animation: {
+      entrance: "slideUp",
+      entranceDuration: 30,
+    },
+  },
+];
 
 type RootProps = Derived & {
   chatdata?: TranscriptJson;
@@ -158,6 +207,14 @@ export const RemotionRoot: React.FC = () => {
         defaultProps={defaultValues.kenburnsDefaultValues}
       />
       <Composition
+        id="Sample"
+        component={TestTextComposition}
+        durationInFrames={3 * 30}
+        fps={30}
+        width={1080}
+        height={1920}
+      />
+      <Composition
         id="ChatVideo"
         component={ChatVideo2}
         fps={FPS}
@@ -226,7 +283,9 @@ export const RemotionRoot: React.FC = () => {
       <Composition
         id="RedditNarration"
         component={MyRedditVideo}
-        durationInFrames={Math.ceil(defaultValues.redditDefaultValues.duration * 30)}
+        durationInFrames={Math.ceil(
+          defaultValues.redditDefaultValues.duration * 30,
+        )}
         fps={30}
         height={1920}
         width={1080}
@@ -240,7 +299,8 @@ export const RemotionRoot: React.FC = () => {
           sentenceBgColor: defaultValues.redditDefaultValues.sentenceBgColor,
           backgroundOverlayColor: "rgba(0,0,0,0.6)",
           backgroundVideo: defaultValues.redditDefaultValues.backgroundVideo,
-          backgroundMusicPath: defaultValues.redditDefaultValues.backgroundMusicPath,
+          backgroundMusicPath:
+            defaultValues.redditDefaultValues.backgroundMusicPath,
           musicVolume: 0.2,
         }}
         calculateMetadata={async ({ props }) => {
@@ -258,7 +318,9 @@ export const RemotionRoot: React.FC = () => {
       <Composition
         id="StoryTellingVideo"
         component={StoryTellingVideo}
-        durationInFrames={Math.ceil(defaultValues.storyTellingDefaultValues.duration * 30)}
+        durationInFrames={Math.ceil(
+          defaultValues.storyTellingDefaultValues.duration * 30,
+        )}
         fps={30}
         height={1920}
         width={1080}
@@ -269,10 +331,13 @@ export const RemotionRoot: React.FC = () => {
           fontSize: defaultValues.storyTellingDefaultValues.fontSize,
           fontFamily: defaultValues.storyTellingDefaultValues.fontFamily,
           fontColor: defaultValues.storyTellingDefaultValues.fontColor,
-          sentenceBgColor: defaultValues.storyTellingDefaultValues.sentenceBgColor,
+          sentenceBgColor:
+            defaultValues.storyTellingDefaultValues.sentenceBgColor,
           backgroundOverlayColor: "rgba(0,0,0,0.6)",
-          backgroundVideo: defaultValues.storyTellingDefaultValues.backgroundVideo,
-          backgroundMusicPath: defaultValues.storyTellingDefaultValues.backgroundMusicPath,
+          backgroundVideo:
+            defaultValues.storyTellingDefaultValues.backgroundVideo,
+          backgroundMusicPath:
+            defaultValues.storyTellingDefaultValues.backgroundMusicPath,
           musicVolume: 0.2,
         }}
         calculateMetadata={async ({ props }) => {
@@ -290,23 +355,30 @@ export const RemotionRoot: React.FC = () => {
       <Composition
         id="CurveLineTrend"
         component={SimpleTrendGraph}
-        durationInFrames={30 * defaultValues.curveLineTrendDefaultValues.duration}
+        durationInFrames={
+          30 * defaultValues.curveLineTrendDefaultValues.duration
+        }
         fps={30}
         width={1080}
         height={1920}
-        defaultProps={defaultValues.curveLineTrendDefaultValues as SimpleGraphProps}
+        defaultProps={
+          defaultValues.curveLineTrendDefaultValues as SimpleGraphProps
+        }
       />
       <Composition
         id="NewTexTyping"
         component={NewTypingAnimation}
-        durationInFrames={calculateDuration(defaultValues.textTypingDefaultValues.phrase)}
+        durationInFrames={calculateDuration(
+          defaultValues.textTypingDefaultValues.phrase,
+        )}
         fps={60}
         width={1080}
         height={1920}
         defaultProps={{
           phraseData: defaultValues.textTypingDefaultValues.phrase,
           fontIndex: defaultValues.textTypingDefaultValues.fontIndex, // Poppins
-          backgroundIndex: defaultValues.textTypingDefaultValues.backgroundIndex, // Ambient Flow
+          backgroundIndex:
+            defaultValues.textTypingDefaultValues.backgroundIndex, // Ambient Flow
           audioIndex: defaultValues.textTypingDefaultValues.audioIndex, // Soft Keys
         }}
       />
@@ -325,7 +397,9 @@ export const RemotionRoot: React.FC = () => {
         id="FlipCards"
         durationInFrames={180}
         component={FlipCardsCompositionComponent}
-        defaultProps={{ config: defaultValues.flipcardsdefaulvalues as MetricCardsProps }}
+        defaultProps={{
+          config: defaultValues.flipcardsdefaulvalues as MetricCardsProps,
+        }}
         fps={30}
         width={1080}
         height={1920}
@@ -346,6 +420,20 @@ export const RemotionRoot: React.FC = () => {
             width: 1920,
             height: 1080,
           };
+        }}
+      />
+      <Composition
+        id="DynamicVideo"
+        component={DynamicTemplate}
+        durationInFrames={300}
+        fps={30}
+        width={1080}
+        height={1920}
+        defaultProps={{
+          config: {
+            layers: exampleLayers,
+            backgroundColor: "#000000",
+          },
         }}
       />
     </>
