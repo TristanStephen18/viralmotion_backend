@@ -72,7 +72,7 @@ export const uploads = pgTable("uploads", {
   userId: integer("user_id")
     .references(() => users.id)
     .notNull(),
-  type: text("type").$type<"image" | "video">().notNull(),
+  type: text("type").$type<"image" | "video" >().notNull(),
   url: text("url").notNull(), 
   uploadedAt: timestamp("uploaded_at").defaultNow().notNull(),
 });

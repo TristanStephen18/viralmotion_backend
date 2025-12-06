@@ -36,6 +36,7 @@ import audioRoutes from "./routes/tools/audio.ts";
 import enhanceSpeechRoutes from "./routes/tools/enhanceSpeech.ts";
 import veo3Routes from "./routes/apis/veo3.ts";
 import youtubeRoutes from "./routes/apis/youtube.ts";
+import saveImageRoutes from "./utils/saveImage.ts";
 
 const app = express();
 
@@ -135,12 +136,14 @@ app.use("/api/gemini-image", geminiImageGenRoutes);
 app.use("/api/openai-image", openAiImageGenRoutes);
 app.use("/api/video-generation/huggingface", huggingFaceVideoGenroutes);
 app.use("/api/video-generation/tavus", tavusRoutes);
-app.use("/api/veo", veoRoutes);
+app.use("/api/veo3", veoRoutes);
 app.use("/api/youtube", ytRoutes);
 app.use("/api/tools/audio", audioRoutes);
 app.use("/api/tools/speech-enhancement", enhanceSpeechRoutes);
 app.use("/api/veo3-video-generation", veo3Routes);
 app.use("/api/youtube-v2", youtubeRoutes); 
+app.use('/api/tools/save-image', saveImageRoutes);
+
 
 
 app.use((req, res) => {
