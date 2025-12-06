@@ -58,7 +58,7 @@ router.post(
       const pythonCommand = process.platform === 'win32' ? 'python' : 'python3';
       
       const pythonProcess = spawn(pythonCommand, [
-        path.join("server/scripts", "enhance_audio.py"),
+        path.join("scripts", "enhance_audio.py"),
         req.file.path,
         enhancedFilePath,
       ]);
