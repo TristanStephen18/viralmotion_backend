@@ -13,7 +13,7 @@ export const JWT_SECRET = process.env.JWT_SECRET;
 export const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET;
 
 // ✅ CHANGED: Short-lived access tokens (15 minutes instead of 7 days)
-export const JWT_EXPIRES_IN = "15m";
+export const JWT_EXPIRES_IN = "10h";
 
 // ✅ NEW: Refresh token expiration
 export const JWT_REFRESH_EXPIRES_IN = "7d";
