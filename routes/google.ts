@@ -21,14 +21,9 @@ const router = Router();
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID!;
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET!;
 
-// ✅ FIXED: Dynamic URLs based on environment
-const isDevelopment = process.env.NODE_ENV !== "production";
-const CLIENT_URL = isDevelopment 
-  ? "http://localhost:5173" 
-  : (process.env.CLIENT_URL || "https://remotion-web-application.vercel.app");
-const BACKEND_URL = isDevelopment 
-  ? "http://localhost:3000" 
-  : (process.env.BACKEND_URL || "https://viralmotion-backend-ghxi.onrender.com");
+
+const CLIENT_URL =process.env.CLIENT_URL || "https://remotion-web-application.vercel.app";
+const BACKEND_URL = process.env.BACKEND_URL || "https://viralmotion-backend-ghxi.onrender.com";
 
 console.log(`🔧 OAuth Config: Backend=${BACKEND_URL}, Client=${CLIENT_URL}`);
 
