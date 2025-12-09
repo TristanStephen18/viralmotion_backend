@@ -50,6 +50,7 @@ export const projects = pgTable("projects", {
   title: text("title").notNull(),
   props: jsonb("props").notNull(),
   projectVidUrl: text("project_vidurl").default(""),
+  screenshot: text("screentshot").default(""),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   lastUpdated: timestamp("last_updated").defaultNow().notNull(),
 });
@@ -66,6 +67,23 @@ export const renders = pgTable("renders", {
   outputUrl: text("output_url"),
   renderedAt: timestamp("rendered_at").defaultNow().notNull(),
 });
+
+export const imageGenerations = pgTable("image_generations", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: integer("user_id")
+    .references(() => users.id)
+    .notNull(),
+  prompt: text("prompt").notNull(),
+  model: text("model").notNull(),
+  aspectRatio: text("aspect_ratio").notNull(),
+  imageUrl: text("image_url").notNull(),
+  status: text("status").$type<"completed" | "failed">().default("completed").notNull(),
+  errorMessage: text("error_message"),
+  metadata: jsonb("metadata"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  userIdIdx: index("image_generations_user_id_idx").on(table.userId),
+}));
 
 export const uploads = pgTable("uploads", {
   id: serial("id").primaryKey(),

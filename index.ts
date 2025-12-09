@@ -37,6 +37,8 @@ import enhanceSpeechRoutes from "./routes/tools/enhanceSpeech.ts";
 import veo3Routes from "./routes/apis/veo3.ts";
 import youtubeRoutes from "./routes/apis/youtube.ts";
 import saveImageRoutes from "./utils/saveImage.ts";
+//screenshotsaver routes
+import ssToCloudinaryRoutes from "./utils/screenshotSaver.ts";
 
 const app = express();
 
@@ -144,6 +146,8 @@ app.use("/api/veo3-video-generation", veo3Routes);
 app.use("/api/youtube-v2", youtubeRoutes); 
 app.use('/api/tools/save-image', saveImageRoutes);
 
+//new routes
+app.use("/cloudinary", ssToCloudinaryRoutes);
 
 
 app.use((req, res) => {
