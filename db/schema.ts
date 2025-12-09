@@ -190,7 +190,7 @@ export const subscriptions = pgTable(
   "subscriptions",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    userId: uuid("user_id")
+    userId: integer("user_id")  // ✅ Correct: integer (matches users.id)
       .references(() => users.id, { onDelete: "cascade" })
       .notNull(),
 
@@ -205,7 +205,7 @@ export const subscriptions = pgTable(
     status: varchar("status", { length: 50 })
       .$type<"active" | "trialing" | "canceled" | "past_due" | "incomplete" | "unpaid">()
       .notNull(),
-    plan: varchar("plan", { length: 50 }).notNull(), // "pro"
+    plan: varchar("plan", { length: 50 }).notNull(),
 
     // Billing periods
     currentPeriodStart: timestamp("current_period_start").notNull(),
@@ -220,14 +220,13 @@ export const subscriptions = pgTable(
     trialEnd: timestamp("trial_end"),
 
     // Metadata
-    metadata: text("metadata"), // JSON string for additional data
+    metadata: text("metadata"),
 
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
   (table) => {
     return {
-      // ✅ CORRECT: Using index() not pgIndex()
       userIdIdx: index("subscriptions_user_id_idx").on(table.userId),
       statusIdx: index("subscriptions_status_idx").on(table.status),
       stripeSubIdIdx: index("subscriptions_stripe_sub_id_idx").on(table.stripeSubscriptionId),
