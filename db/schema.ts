@@ -7,7 +7,8 @@ import {
   jsonb,
   uuid,
   boolean,
-  index
+  index,
+  varchar
 } from "drizzle-orm/pg-core";
 
 export const users = pgTable("users", {
@@ -29,6 +30,7 @@ export const users = pgTable("users", {
   lockoutUntil: timestamp("lockout_until"),
   lastLogin: timestamp("last_login"),
   passwordChangedAt: timestamp("password_changed_at"),
+  stripeCustomerId: varchar("stripe_customer_id", { length: 255 }).unique()
 });
 
 export const templates = pgTable("templates", {
@@ -183,3 +185,52 @@ export const blacklistedTokens = pgTable("blacklisted_tokens", {
 }, (table) => ({
   tokenIdx: index("blacklisted_tokens_token_idx").on(table.token),
 }));
+
+export const subscriptions = pgTable(
+  "subscriptions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id")
+      .references(() => users.id, { onDelete: "cascade" })
+      .notNull(),
+
+    // Stripe identifiers
+    stripeSubscriptionId: varchar("stripe_subscription_id", { length: 255 })
+      .unique()
+      .notNull(),
+    stripeCustomerId: varchar("stripe_customer_id", { length: 255 }).notNull(),
+    stripePriceId: varchar("stripe_price_id", { length: 255 }).notNull(),
+
+    // Subscription details
+    status: varchar("status", { length: 50 })
+      .$type<"active" | "trialing" | "canceled" | "past_due" | "incomplete" | "unpaid">()
+      .notNull(),
+    plan: varchar("plan", { length: 50 }).notNull(), // "pro"
+
+    // Billing periods
+    currentPeriodStart: timestamp("current_period_start").notNull(),
+    currentPeriodEnd: timestamp("current_period_end").notNull(),
+
+    // Cancellation
+    cancelAtPeriodEnd: boolean("cancel_at_period_end").default(false).notNull(),
+    canceledAt: timestamp("canceled_at"),
+
+    // Trial
+    trialStart: timestamp("trial_start"),
+    trialEnd: timestamp("trial_end"),
+
+    // Metadata
+    metadata: text("metadata"), // JSON string for additional data
+
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => {
+    return {
+      // ✅ CORRECT: Using index() not pgIndex()
+      userIdIdx: index("subscriptions_user_id_idx").on(table.userId),
+      statusIdx: index("subscriptions_status_idx").on(table.status),
+      stripeSubIdIdx: index("subscriptions_stripe_sub_id_idx").on(table.stripeSubscriptionId),
+    };
+  }
+);
