@@ -12,7 +12,7 @@ const router = Router();
 
 // Save new project
 router.post("/save", requireAuth, async (req: AuthRequest, res: Response) => {
-  const { title, templateId, props, projectVidUrl } = req.body;
+  const { title, templateId, props, screenshot } = req.body;
   const userId = req.user?.userId;
 
   if (!userId) {
@@ -33,7 +33,7 @@ router.post("/save", requireAuth, async (req: AuthRequest, res: Response) => {
     return res.status(400).json({ error: "Project name already exists." });
   }
 
-  // Insert new project with optional projectVidUrl
+  // Insert new project with optional screenshot
   const [newProject] = await db
     .insert(projects)
     .values({
@@ -41,7 +41,7 @@ router.post("/save", requireAuth, async (req: AuthRequest, res: Response) => {
       title,
       templateId,
       props,
-      projectVidUrl,
+      screenshot,
       lastUpdated: new Date(),
     })
     .returning();
@@ -55,7 +55,7 @@ router.put(
   requireAuth,
   async (req: AuthRequest, res: Response) => {
     const { id } = req.params;
-    const { props, projectVidUrl } = req.body;
+    const { props, screenshot } = req.body;
     const userId = req.user?.userId;
 
     if (!userId) {
@@ -74,7 +74,7 @@ router.put(
     // Update props and/or video url
     const [updated] = await db
       .update(projects)
-      .set({ props, projectVidUrl, lastUpdated: new Date() })
+      .set({ props, screenshot, lastUpdated: new Date() })
       .where(eq(projects.id, Number(id)))
       .returning();
 
@@ -144,9 +144,9 @@ router.delete("/:id", requireAuth, async (req: AuthRequest, res: Response) => {
       return res.status(404).json({ error: "Project not found" });
     }
 
-    if (existing.projectVidUrl) {
+    if (existing.screenshot) {
       try {
-        const match = existing.projectVidUrl.match(
+        const match = existing.screenshot.match(
           /upload\/(?:v\d+\/)?([^\.]+)/
         );
         const publicId = match ? match[1] : null;
@@ -160,7 +160,7 @@ router.delete("/:id", requireAuth, async (req: AuthRequest, res: Response) => {
         } else {
           console.warn(
             "⚠️ Could not extract Cloudinary public_id from URL:",
-            existing.projectVidUrl
+            existing.screenshot
           );
         }
       } catch (cloudError) {
