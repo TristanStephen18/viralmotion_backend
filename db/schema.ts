@@ -107,6 +107,23 @@ export const veo3Generations = pgTable("veo3_generations", {
   completedAt: timestamp("completed_at"),
 });
 
+export const imageGenerations = pgTable("image_generations", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: integer("user_id")
+    .references(() => users.id)
+    .notNull(),
+  prompt: text("prompt").notNull(),
+  model: text("model").notNull(),
+  aspectRatio: text("aspect_ratio").notNull(),
+  imageUrl: text("image_url").notNull(),
+  status: text("status").$type<"completed" | "failed">().default("completed").notNull(),
+  errorMessage: text("error_message"),
+  metadata: jsonb("metadata"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  userIdIdx: index("image_generations_user_id_idx").on(table.userId),
+}));
+
 export const youtubeDownloads = pgTable("youtube_downloads", {
   id: uuid("id").defaultRandom().primaryKey(),
   userId: integer("user_id").references(() => users.id).notNull(),
