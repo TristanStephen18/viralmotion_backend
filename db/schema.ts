@@ -122,6 +122,7 @@ export const imageGenerations = pgTable("image_generations", {
   status: text("status").$type<"completed" | "failed">().default("completed").notNull(),
   errorMessage: text("error_message"),
   metadata: jsonb("metadata"),
+  
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => ({
   userIdIdx: index("image_generations_user_id_idx").on(table.userId),

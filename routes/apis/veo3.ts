@@ -8,7 +8,6 @@ import {
 } from "../../controllers/veo3/veo3Controller.ts";
 import { requireAuth } from "../../utils/authmiddleware.ts";
 
-
 const router = express.Router();
 
 import fs from "fs";

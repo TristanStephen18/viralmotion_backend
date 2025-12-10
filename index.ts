@@ -38,7 +38,9 @@ import veo3Routes from "./routes/apis/veo3.ts";
 import youtubeRoutes from "./routes/apis/youtube.ts";
 import saveImageRoutes from "./utils/saveImage.ts";
 import imageGenRoutes from "./routes/tools/imageGen.ts";
+import subscriptionRoutes from "./routes/subscription.ts";
 import ssToCloudinaryRoutes from "./utils/screenshotSaver.ts";
+
 const app = express();
 
 // required for rate limiting and IP detection
@@ -79,6 +81,8 @@ app.use(
     exposedHeaders: ["Set-Cookie"],
   })
 );
+
+app.use('/api/subscription/webhook', subscriptionRoutes);
 
 // Rate limiting (general API protection)
 app.use(generalRateLimiter);
@@ -145,6 +149,7 @@ app.use("/api/veo3-video-generation", veo3Routes);
 app.use("/api/youtube-v2", youtubeRoutes); 
 app.use('/api/tools/save-image', saveImageRoutes);
 app.use("/api/image-generation", imageGenRoutes);
+app.use("/api/subscription", subscriptionRoutes);
 
 //new routes
 app.use("/cloudinary", ssToCloudinaryRoutes);

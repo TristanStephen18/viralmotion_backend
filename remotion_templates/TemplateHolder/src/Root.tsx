@@ -27,10 +27,7 @@ import {
 import { LogoCompositionComponent } from "./components/LogoAnimation";
 import * as defaultValues from "./defaultvalues";
 import { TestTextComposition } from "./components/SampleTemplate";
-import {
-  DynamicTemplate,
-  Layer,
-} from "./components/DynamicLayerComposition";
+import { DynamicTemplate, Layer } from "./components/DynamicLayerComposition";
 
 type Derived = React.ComponentProps<typeof ChatVideo2>;
 
@@ -433,7 +430,16 @@ export const RemotionRoot: React.FC = () => {
           config: {
             layers: exampleLayers,
             backgroundColor: "#000000",
+            duration: 10,
           },
+        }}
+        calculateMetadata={({ props }) => {
+          const duration = props.config?.duration ?? 10; // fallback to 10 seconds
+          const fps = 30;
+
+          return {
+            durationInFrames: duration * fps,
+          };
         }}
       />
     </>
