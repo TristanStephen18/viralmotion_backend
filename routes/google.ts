@@ -21,8 +21,7 @@ const router = Router();
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID!;
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET!;
 
-
-const CLIENT_URL =process.env.CLIENT_URL || "https://remotion-web-application.vercel.app";
+const CLIENT_URL =process.env.CLIENT_URL || "https://www.viralmotion.ai";
 const BACKEND_URL = process.env.BACKEND_URL || "https://viralmotion-backend-kx15.onrender.com";
 
 console.log(`🔧 OAuth Config: Backend=${BACKEND_URL}, Client=${CLIENT_URL}`);
