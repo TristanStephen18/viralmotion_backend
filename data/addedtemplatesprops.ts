@@ -1,7 +1,7 @@
 export const additionaltemplates = [
   {
-    name: "Kinetic Typography",
-    description: "Create a dynamic, high-energy text explosion intro.",
+    name: "Photo Collage",
+    description: "Display images in a Collage type animation",
     propsSchema: {
       id: "string",
       words: "string[]",
@@ -23,9 +23,9 @@ export const additionaltemplates = [
     },
   },
   {
-    name: "Neon Flicker",
+    name: "Dancing People",
     description:
-      "A dynamic 'Neon Flicker' template for a fast-paced text intro.",
+      "Display dancing renolds.",
     propsSchema: {
       text: "string",
       colors: "string[]",
@@ -40,58 +40,5 @@ export const additionaltemplates = [
       },
     },
   },
-  {
-    name: "Logo Animation",
-    description:
-      "Reveal your brand with a dynamic logo animation featuring a self-drawing outline and a glowing, liquid-fill effect.",
-    propsSchema: {
-      text: "string",
-      durationOutline: "number",
-      durationFill: "number",
-      durationEndPause: "number",
-      baseColor: "string",
-    },
-  },
-  {
-    name: "Heat Map",
-    description: "Animate your data into a sleek, colorful heatmap.",
-    propsSchema: {
-      id: "string",
-      title: "string",
-      subtitle: "string",
-      textColor: "string",
-      languages: [
-        {
-          name: "string",
-          usage: "number",
-          squares: "number",
-          logo: "string",
-        },
-      ],
-      primaryColor: "string",
-      secondaryColor: "string",
-      accentColor: "string",
-      maxValue: "number",
-      backgroundStyle: "string",
-    },
-  },
-  {
-    name: "Flip Cards",
-    description: "Flipping card animations.",
-    propsSchema: {
-      title: "string",
-      subtitle: "string",
-      metrics: [
-        {
-          front: "string",
-          back: "string",
-          color: "string",
-        },
-      ],
-      flipDuration: "number",
-      spacing: "number",
-      cardWidth: "number",
-      backgroundGradient: "string[]",
-    },
-  },
+  
 ];

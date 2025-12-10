@@ -1,6 +1,11 @@
 import { Router } from "express";
 import { eq, and, gte, desc } from "drizzle-orm";
-import { users, loginAttempts, refreshTokens } from "../../db/schema.ts";
+import {
+  users,
+  loginAttempts,
+  refreshTokens,
+  subscriptions,
+} from "../../db/schema.ts";
 import { db } from "../../db/client.ts";
 import { requireAuth, require2FA } from "../../utils/authmiddleware.ts";
 import type { AuthRequest } from "../../utils/authmiddleware.ts";
@@ -39,80 +44,114 @@ import { GoTrueAdminApi } from "@supabase/supabase-js";
 
 const router = Router();
 
-const CLIENT_URL = process.env.NODE_ENV === 'production'
-  ? (process.env.CLIENT_URL || "https://remotion-web-application.vercel.app")
-  : "http://localhost:5173";
+const CLIENT_URL =
+  process.env.NODE_ENV === "production"
+    ? process.env.CLIENT_URL || "https://remotion-web-application.vercel.app"
+    : "http://localhost:5173";
 
+router.post(
+  "/signup",
+  signupRateLimiter,
+  validateSignupInput,
+  async (req, res) => {
+    try {
+      const { email, password, name } = req.body;
 
-router.post("/signup", signupRateLimiter, validateSignupInput, async (req, res) => {
-  try {
-    const { email, password, name } = req.body;
+      const existing = await db
+        .select()
+        .from(users)
+        .where(eq(users.email, email));
+      if (existing.length > 0) {
+        return res.status(400).json({ error: "Invalid registration details" });
+      }
 
-    const existing = await db.select().from(users).where(eq(users.email, email));
-    if (existing.length > 0) {
-      
-      return res.status(400).json({ error: "Invalid registration details" });
+      const passwordHash = await hashPassword(password);
+
+      const [newUser] = await db
+        .insert(users)
+        .values({
+          email,
+          name,
+          passwordHash,
+          provider: "local",
+          profilePicture:
+            "https://res.cloudinary.com/dnxc1lw18/image/upload/v1761048476/pfp_yitfgl.jpg",
+          verified: false,
+        })
+        .returning();
+
+      // ✅ CREATE FREE 7-DAY TRIAL AUTOMATICALLY
+      try {
+        const trialEndDate = new Date();
+        trialEndDate.setDate(trialEndDate.getDate() + 7);
+
+        await db.insert(subscriptions).values({
+          userId: newUser.id,
+          stripeSubscriptionId: null, // ✅ CHANGED: null instead of ''
+          stripeCustomerId: null, // ✅ CHANGED: null instead of ''
+          stripePriceId: null, // ✅ CHANGED: null instead of ''
+          status: "free_trial",
+          plan: "free",
+          currentPeriodStart: new Date(),
+          currentPeriodEnd: trialEndDate,
+          cancelAtPeriodEnd: false,
+          trialStart: new Date(),
+          trialEnd: trialEndDate,
+        });
+
+        console.log(
+          `✅ Created free 7-day trial for user ${newUser.id} (${email})`
+        );
+      } catch (trialError) {
+        console.error("⚠️ Failed to create free trial:", trialError);
+      }
+
+      const protocol = req.protocol;
+      const host = req.get("host");
+      const baseUrl = `${protocol}://${host}`;
+      await sendEmailVerification(newUser.id, email, baseUrl);
+
+      res.json({
+        success: true,
+        message: "Signup successful. Please verify your email.",
+      });
+    } catch (err) {
+      console.error("Signup error:", err);
+      res.status(500).json({ error: "Registration failed" });
     }
-
-    const passwordHash = await hashPassword(password);
-
-    const [newUser] = await db
-      .insert(users)
-      .values({
-        email,
-        name,
-        passwordHash,
-        provider: "local",
-        profilePicture: "https://res.cloudinary.com/dnxc1lw18/image/upload/v1761048476/pfp_yitfgl.jpg",
-        verified: false,
-      })
-      .returning();
-
-    const protocol = req.protocol;
-    const host = req.get("host");
-    const baseUrl = `${protocol}://${host}`;
-    await sendEmailVerification(newUser.id, email, baseUrl);
-
-    res.json({ 
-      success: true,
-      message: "Signup successful. Please verify your email." 
-    });
-  } catch (err) {
-    console.error("Signup error:", err);
-    res.status(500).json({ error: "Registration failed" });
   }
-});
-
+);
 
 router.post("/login", authRateLimiter, validateLoginInput, async (req, res) => {
   const ipAddress = req.ip || req.socket.remoteAddress || "unknown";
-  
+
   try {
     const { email, password } = req.body;
 
     const [user] = await db.select().from(users).where(eq(users.email, email));
-    
+
     if (!user || !user.passwordHash) {
-     
       await db.insert(loginAttempts).values({
         email,
         ipAddress,
         successful: false,
       });
-      
-     
+
       return res.status(400).json({ error: "Invalid credentials" });
     }
 
     // ✅ NEW: Check if account is locked
-    if (user.accountLocked && user.lockoutUntil && new Date() < user.lockoutUntil) {
-      return res.status(403).json({ 
+    if (
+      user.accountLocked &&
+      user.lockoutUntil &&
+      new Date() < user.lockoutUntil
+    ) {
+      return res.status(403).json({
         error: "Account temporarily locked. Please try again later.",
-        lockoutUntil: user.lockoutUntil
+        lockoutUntil: user.lockoutUntil,
       });
     }
 
-    
     const fifteenMinutesAgo = new Date(Date.now() - 15 * 60 * 1000);
     const recentAttempts = await db
       .select()
@@ -127,57 +166,58 @@ router.post("/login", authRateLimiter, validateLoginInput, async (req, res) => {
 
     if (recentAttempts.length >= LOCKOUT_CONFIG.maxAttempts) {
       // Lock account
-      const lockoutUntil = new Date(Date.now() + LOCKOUT_CONFIG.lockoutDuration);
+      const lockoutUntil = new Date(
+        Date.now() + LOCKOUT_CONFIG.lockoutDuration
+      );
       await db
         .update(users)
         .set({ accountLocked: true, lockoutUntil })
         .where(eq(users.id, user.id));
 
-      return res.status(403).json({ 
+      return res.status(403).json({
         error: "Too many failed attempts. Account locked for 15 minutes.",
-        lockoutUntil
+        lockoutUntil,
       });
     }
 
     if (!user.verified) {
-      return res.status(403).json({ 
-        error: "Please verify your email before logging in." 
+      return res.status(403).json({
+        error: "Please verify your email before logging in.",
       });
     }
 
     const valid = await comparePassword(password, user.passwordHash);
-    
+
     if (!valid) {
-      
       await db.insert(loginAttempts).values({
         email,
         ipAddress,
         successful: false,
       });
-      
+
       return res.status(400).json({ error: "Invalid credentials" });
     }
 
-   
     await db.insert(loginAttempts).values({
       email,
       ipAddress,
       successful: true,
     });
 
-    
     await db
       .update(users)
       .set({ lastLogin: new Date() })
       .where(eq(users.id, user.id));
 
-   
     if (user.twoFactorEnabled) {
-      
-      const tempToken = jwt.sign({ userId: user.id, requires2FA: true }, JWT_SECRET, {
-        expiresIn: "5m",
-      });
-      
+      const tempToken = jwt.sign(
+        { userId: user.id, requires2FA: true },
+        JWT_SECRET,
+        {
+          expiresIn: "5m",
+        }
+      );
+
       return res.json({
         requires2FA: true,
         tempToken,
@@ -185,22 +225,25 @@ router.post("/login", authRateLimiter, validateLoginInput, async (req, res) => {
       });
     }
 
-   
-    const accessToken = generateAccessToken({ userId: user.id, email: user.email });
-    const refreshToken = generateRefreshToken({ userId: user.id, email: user.email });
+    const accessToken = generateAccessToken({
+      userId: user.id,
+      email: user.email,
+    });
+    const refreshToken = generateRefreshToken({
+      userId: user.id,
+      email: user.email,
+    });
 
-   
     const userAgent = req.headers["user-agent"] || "unknown";
     await storeRefreshToken(user.id, refreshToken, ipAddress, userAgent);
 
- 
     setAccessTokenCookie(res, accessToken);
     setRefreshTokenCookie(res, refreshToken);
 
     res.json({
       success: true,
       message: "Login successful",
-      token: accessToken, 
+      token: accessToken,
       user: { id: user.id, email: user.email, name: user.name },
     });
   } catch (err) {
@@ -208,7 +251,6 @@ router.post("/login", authRateLimiter, validateLoginInput, async (req, res) => {
     res.status(500).json({ error: "Login failed" });
   }
 });
-
 
 router.post("/verify-2fa", async (req, res) => {
   try {
@@ -218,8 +260,8 @@ router.post("/verify-2fa", async (req, res) => {
       return res.status(400).json({ error: "Missing required fields" });
     }
 
-    const decoded = jwt.verify(tempToken, JWT_SECRET) as { 
-      userId: number; 
+    const decoded = jwt.verify(tempToken, JWT_SECRET) as {
+      userId: number;
       requires2FA: boolean;
     };
 
@@ -242,9 +284,14 @@ router.post("/verify-2fa", async (req, res) => {
       return res.status(400).json({ error: "Invalid 2FA code" });
     }
 
-   
-    const accessToken = generateAccessToken({ userId: user.id, email: user.email });
-    const refreshToken = generateRefreshToken({ userId: user.id, email: user.email });
+    const accessToken = generateAccessToken({
+      userId: user.id,
+      email: user.email,
+    });
+    const refreshToken = generateRefreshToken({
+      userId: user.id,
+      email: user.email,
+    });
 
     const ipAddress = req.ip || req.socket.remoteAddress || "unknown";
     const userAgent = req.headers["user-agent"] || "unknown";
@@ -265,7 +312,6 @@ router.post("/verify-2fa", async (req, res) => {
   }
 });
 
-
 router.post("/refresh-token", async (req, res) => {
   try {
     const refreshToken = req.cookies?.refreshToken || req.body.refreshToken;
@@ -280,7 +326,6 @@ router.post("/refresh-token", async (req, res) => {
       return res.status(401).json({ error: "Invalid refresh token" });
     }
 
-   
     const [storedToken] = await db
       .select()
       .from(refreshTokens)
@@ -290,10 +335,9 @@ router.post("/refresh-token", async (req, res) => {
       return res.status(401).json({ error: "Token has been revoked" });
     }
 
-   
-    const accessToken = generateAccessToken({ 
-      userId: payload.userId, 
-      email: payload.email 
+    const accessToken = generateAccessToken({
+      userId: payload.userId,
+      email: payload.email,
     });
 
     setAccessTokenCookie(res, accessToken);
@@ -308,20 +352,18 @@ router.post("/refresh-token", async (req, res) => {
   }
 });
 
-
 router.post("/logout", requireAuth, async (req: AuthRequest, res) => {
   try {
-    const accessToken = req.cookies?.accessToken || req.headers.authorization?.split(" ")[1];
+    const accessToken =
+      req.cookies?.accessToken || req.headers.authorization?.split(" ")[1];
     const refreshToken = req.cookies?.refreshToken;
 
-    
     if (accessToken) {
       const expiresAt = new Date();
       expiresAt.setMinutes(expiresAt.getMinutes() + 15);
       await blacklistToken(accessToken, expiresAt);
     }
 
-    
     if (refreshToken) {
       await revokeRefreshToken(refreshToken);
     }
@@ -334,7 +376,6 @@ router.post("/logout", requireAuth, async (req: AuthRequest, res) => {
     res.status(500).json({ error: "Logout failed" });
   }
 });
-
 
 router.get("/verify", async (req, res) => {
   const { token } = req.query;
@@ -358,7 +399,6 @@ router.get("/verify", async (req, res) => {
     res.status(400).json({ error: "Invalid or expired token" });
   }
 });
-
 
 router.get("/", requireAuth, async (req: AuthRequest, res) => {
   const userId = req.user?.userId;
@@ -391,7 +431,6 @@ router.get("/", requireAuth, async (req: AuthRequest, res) => {
   }
 });
 
-
 router.post("/2fa/enable", requireAuth, async (req: AuthRequest, res) => {
   const userId = req.user?.userId;
 
@@ -401,7 +440,7 @@ router.post("/2fa/enable", requireAuth, async (req: AuthRequest, res) => {
 
   try {
     const [user] = await db.select().from(users).where(eq(users.id, userId));
-    
+
     if (!user) {
       return res.status(404).json({ error: "User not found" });
     }
@@ -413,27 +452,22 @@ router.post("/2fa/enable", requireAuth, async (req: AuthRequest, res) => {
     let secret: string;
     let otpauthUrl: string;
 
-    
     if (user.twoFactorSecret) {
-      
       secret = user.twoFactorSecret;
-      
-      
+
       otpauthUrl = `otpauth://totp/ViralMotion:${user.email}?secret=${secret}&issuer=ViralMotion`;
-      
+
       console.log(`♻️ Reusing existing 2FA secret for user ${user.email}`);
     } else {
-      
       const secretData = generateTwoFactorSecret(user.email);
       secret = secretData.secret;
       otpauthUrl = secretData.otpauthUrl;
-      
-      
+
       await db
         .update(users)
         .set({ twoFactorSecret: secret })
         .where(eq(users.id, userId));
-      
+
       console.log(`✨ Generated new 2FA secret for user ${user.email}`);
     }
 
@@ -443,7 +477,7 @@ router.post("/2fa/enable", requireAuth, async (req: AuthRequest, res) => {
       success: true,
       secret,
       qrCode,
-      message: user.twoFactorSecret 
+      message: user.twoFactorSecret
         ? "Scan QR code with your authenticator app (reusing existing setup)"
         : "Scan QR code with your authenticator app",
     });
@@ -452,7 +486,6 @@ router.post("/2fa/enable", requireAuth, async (req: AuthRequest, res) => {
     res.status(500).json({ error: "Failed to enable 2FA" });
   }
 });
-
 
 router.post("/2fa/confirm", requireAuth, async (req: AuthRequest, res) => {
   const userId = req.user?.userId;
@@ -490,7 +523,6 @@ router.post("/2fa/confirm", requireAuth, async (req: AuthRequest, res) => {
   }
 });
 
-
 router.post("/2fa/disable", requireAuth, async (req: AuthRequest, res) => {
   const userId = req.user?.userId;
   const { password } = req.body;
@@ -501,23 +533,21 @@ router.post("/2fa/disable", requireAuth, async (req: AuthRequest, res) => {
 
   try {
     const [user] = await db.select().from(users).where(eq(users.id, userId));
-    
+
     if (!user) {
       return res.status(404).json({ error: "User not found" });
     }
 
     const valid = await comparePassword(password, user.passwordHash);
-    
+
     if (!valid) {
       return res.status(400).json({ error: "Invalid password" });
     }
 
-    
     await db
       .update(users)
-      .set({ 
+      .set({
         twoFactorEnabled: false,
-       
       })
       .where(eq(users.id, userId));
 
@@ -540,7 +570,7 @@ router.post("/2fa/reset", requireAuth, async (req: AuthRequest, res) => {
 
   try {
     const [user] = await db.select().from(users).where(eq(users.id, userId));
-    
+
     if (!user) {
       return res.status(404).json({ error: "User not found" });
     }
@@ -550,7 +580,7 @@ router.post("/2fa/reset", requireAuth, async (req: AuthRequest, res) => {
 
     await db
       .update(users)
-      .set({ 
+      .set({
         twoFactorSecret: secret,
         twoFactorEnabled: false,
       })
@@ -568,33 +598,35 @@ router.post("/2fa/reset", requireAuth, async (req: AuthRequest, res) => {
   }
 });
 
+router.put(
+  "/update-profile-picture",
+  requireAuth,
+  async (req: AuthRequest, res) => {
+    const { profile_pic } = req.body;
+    const userId = req.user?.userId;
 
-router.put("/update-profile-picture", requireAuth, async (req: AuthRequest, res) => {
-  const { profile_pic } = req.body;
-  const userId = req.user?.userId;
+    if (!userId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
 
-  if (!userId) {
-    return res.status(401).json({ error: "Unauthorized" });
+    try {
+      const [updated] = await db
+        .update(users)
+        .set({ profilePicture: profile_pic })
+        .where(eq(users.id, userId))
+        .returning();
+
+      res.json({
+        success: true,
+        message: "Profile picture updated successfully",
+        user: updated,
+      });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: "Failed to update profile picture" });
+    }
   }
-
-  try {
-    const [updated] = await db
-      .update(users)
-      .set({ profilePicture: profile_pic })
-      .where(eq(users.id, userId))
-      .returning();
-
-    res.json({
-      success: true,
-      message: "Profile picture updated successfully",
-      user: updated,
-    });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: "Failed to update profile picture" });
-  }
-});
-
+);
 
 router.put("/update-username", requireAuth, async (req: AuthRequest, res) => {
   const { username } = req.body;
@@ -611,13 +643,16 @@ router.put("/update-username", requireAuth, async (req: AuthRequest, res) => {
       .where(eq(users.id, userId))
       .returning();
 
-    res.json({ success: true, message: "Username updated successfully", user: updated });
+    res.json({
+      success: true,
+      message: "Username updated successfully",
+      user: updated,
+    });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: "Failed to update username" });
   }
 });
-
 
 router.put("/update-password", requireAuth, async (req: AuthRequest, res) => {
   const { oldPassword, newPassword, twoFactorCode } = req.body;
@@ -629,16 +664,16 @@ router.put("/update-password", requireAuth, async (req: AuthRequest, res) => {
 
   try {
     const [user] = await db.select().from(users).where(eq(users.id, userId));
-    
+
     if (!user) {
       return res.status(404).json({ error: "User not found" });
     }
 
     if (user.twoFactorEnabled) {
       if (!twoFactorCode) {
-        return res.status(400).json({ 
+        return res.status(400).json({
           error: "2FA code required",
-          requires2FA: true 
+          requires2FA: true,
         });
       }
 
@@ -647,25 +682,25 @@ router.put("/update-password", requireAuth, async (req: AuthRequest, res) => {
       }
 
       const valid = verifyTwoFactorToken(twoFactorCode, user.twoFactorSecret);
-      
+
       if (!valid) {
         return res.status(400).json({ error: "Invalid 2FA code" });
       }
     }
 
     const valid = await comparePassword(oldPassword, user.passwordHash);
-    
+
     if (!valid) {
       return res.status(400).json({ error: "Current password is incorrect" });
     }
 
     const newPasswordHash = await hashPassword(newPassword);
-    
+
     await db
       .update(users)
-      .set({ 
+      .set({
         passwordHash: newPasswordHash,
-        passwordChangedAt: new Date()
+        passwordChangedAt: new Date(),
       })
       .where(eq(users.id, userId));
 
@@ -676,7 +711,6 @@ router.put("/update-password", requireAuth, async (req: AuthRequest, res) => {
   }
 });
 
-
 router.post("/reset-password", passwordResetRateLimiter, async (req, res) => {
   const { newPassword, email, resetToken } = req.body;
 
@@ -685,7 +719,6 @@ router.post("/reset-password", passwordResetRateLimiter, async (req, res) => {
   }
 
   try {
-    
     const decoded = jwt.verify(resetToken, JWT_SECRET) as { email: string };
 
     if (decoded.email !== email) {
@@ -693,7 +726,7 @@ router.post("/reset-password", passwordResetRateLimiter, async (req, res) => {
     }
 
     const [user] = await db.select().from(users).where(eq(users.email, email));
-    
+
     if (!user) {
       return res.status(404).json({ error: "User not found" });
     }
@@ -702,9 +735,9 @@ router.post("/reset-password", passwordResetRateLimiter, async (req, res) => {
 
     await db
       .update(users)
-      .set({ 
+      .set({
         passwordHash: newPasswordHash,
-        passwordChangedAt: new Date()
+        passwordChangedAt: new Date(),
       })
       .where(eq(users.email, email));
 
@@ -715,7 +748,6 @@ router.post("/reset-password", passwordResetRateLimiter, async (req, res) => {
   }
 });
 
-
 router.post("/send-otp", passwordResetRateLimiter, async (req, res) => {
   const { email } = req.body;
 
@@ -724,25 +756,26 @@ router.post("/send-otp", passwordResetRateLimiter, async (req, res) => {
   }
 
   try {
-    const [existing] = await db.select().from(users).where(eq(users.email, email));
+    const [existing] = await db
+      .select()
+      .from(users)
+      .where(eq(users.email, email));
 
     if (!existing) {
-      
-      return res.json({ 
+      return res.json({
         success: true,
-        message: "If an account exists, an OTP has been sent" 
+        message: "If an account exists, an OTP has been sent",
       });
     }
 
     const otp = await sendOtpEmail(email);
-    
+
     res.json({ success: true, message: "OTP sent", token: otp });
   } catch (err) {
     console.error("OTP error:", err);
     res.status(500).json({ error: "Failed to send OTP" });
   }
 });
-
 
 router.post("/verify-otp", async (req, res) => {
   const { email, otp, otpToken } = req.body;
@@ -752,7 +785,10 @@ router.post("/verify-otp", async (req, res) => {
   }
 
   try {
-    const decoded = jwt.verify(otpToken, JWT_SECRET) as { email: string; otp: string };
+    const decoded = jwt.verify(otpToken, JWT_SECRET) as {
+      email: string;
+      otp: string;
+    };
 
     if (decoded.email !== email || decoded.otp !== otp) {
       return res.status(400).json({ error: "Invalid OTP" });
@@ -771,23 +807,28 @@ router.post("/verify-otp", async (req, res) => {
   }
 });
 
-
 router.post("/google-login", async (req, res) => {
   try {
     const { email } = req.body;
-    
+
     if (!email) {
       return res.status(400).json({ error: "Missing email" });
     }
 
     const [user] = await db.select().from(users).where(eq(users.email, email));
-    
+
     if (!user) {
       return res.status(400).json({ error: "User not found" });
     }
 
-    const accessToken = generateAccessToken({ userId: user.id, email: user.email });
-    const refreshToken = generateRefreshToken({ userId: user.id, email: user.email });
+    const accessToken = generateAccessToken({
+      userId: user.id,
+      email: user.email,
+    });
+    const refreshToken = generateRefreshToken({
+      userId: user.id,
+      email: user.email,
+    });
 
     const ipAddress = req.ip || req.socket.remoteAddress || "unknown";
     const userAgent = req.headers["user-agent"] || "unknown";
@@ -796,7 +837,10 @@ router.post("/google-login", async (req, res) => {
     setAccessTokenCookie(res, accessToken);
     setRefreshTokenCookie(res, refreshToken);
 
-    await db.update(users).set({ lastLogin: new Date() }).where(eq(users.id, user.id));
+    await db
+      .update(users)
+      .set({ lastLogin: new Date() })
+      .where(eq(users.id, user.id));
 
     res.json({
       success: true,

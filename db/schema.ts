@@ -218,47 +218,27 @@ export const subscriptions = pgTable(
   "subscriptions",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    userId: integer("user_id") // ✅ Correct: integer (matches users.id)
+    userId: integer("user_id")
       .references(() => users.id, { onDelete: "cascade" })
       .notNull(),
 
-    // Stripe identifiers
-    stripeSubscriptionId: varchar("stripe_subscription_id", { length: 255 })
-      .unique()
-      .default(""),
-    stripeCustomerId: varchar("stripe_customer_id", { length: 255 }).default(
-      ""
-    ),
-    stripePriceId: varchar("stripe_price_id", { length: 255 }).default(""),
+    // ✅ FIXED: Make these nullable for free trials
+    stripeSubscriptionId: varchar("stripe_subscription_id", { length: 255 }).unique(),
+    stripeCustomerId: varchar("stripe_customer_id", { length: 255 }),
+    stripePriceId: varchar("stripe_price_id", { length: 255 }),
 
-    // Subscription details
+    // Rest stays the same...
     status: varchar("status", { length: 50 })
-      .$type<
-        | "active"
-        | "trialing"
-        | "canceled"
-        | "past_due"
-        | "incomplete"
-        | "unpaid"
-      >()
+      .$type<"free_trial" | "active" | "trialing" | "canceled" | "past_due" | "incomplete" | "unpaid">()
       .notNull(),
     plan: varchar("plan", { length: 50 }).notNull(),
-
-    // Billing periods
     currentPeriodStart: timestamp("current_period_start").notNull(),
     currentPeriodEnd: timestamp("current_period_end").notNull(),
-
-    // Cancellation
     cancelAtPeriodEnd: boolean("cancel_at_period_end").default(false).notNull(),
     canceledAt: timestamp("canceled_at"),
-
-    // Trial
     trialStart: timestamp("trial_start"),
     trialEnd: timestamp("trial_end"),
-
-    // Metadata
     metadata: text("metadata"),
-
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
