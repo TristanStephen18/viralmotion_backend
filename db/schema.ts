@@ -8,7 +8,7 @@ import {
   uuid,
   boolean,
   index,
-  varchar
+  varchar,
 } from "drizzle-orm/pg-core";
 
 export const users = pgTable("users", {
@@ -17,20 +17,20 @@ export const users = pgTable("users", {
   name: text("name"),
   passwordHash: text("password_hash"),
   provider: text("provider"),
-  profilePicture: text("profile_picture"), 
+  profilePicture: text("profile_picture"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   verified: boolean("verified").default(false).notNull(),
 
   // 2FA fields
   twoFactorEnabled: boolean("two_factor_enabled").default(false).notNull(),
   twoFactorSecret: text("two_factor_secret"),
-  
+
   // Account security fields
   accountLocked: boolean("account_locked").default(false).notNull(),
   lockoutUntil: timestamp("lockout_until"),
   lastLogin: timestamp("last_login"),
   passwordChangedAt: timestamp("password_changed_at"),
-  stripeCustomerId: varchar("stripe_customer_id", { length: 255 }).unique()
+  stripeCustomerId: varchar("stripe_customer_id", { length: 255 }).unique(),
 });
 
 export const templates = pgTable("templates", {
@@ -75,8 +75,8 @@ export const uploads = pgTable("uploads", {
   userId: integer("user_id")
     .references(() => users.id)
     .notNull(),
-  type: text("type").$type<"image" | "video" >().notNull(),
-  url: text("url").notNull(), 
+  type: text("type").$type<"image" | "video">().notNull(),
+  url: text("url").notNull(),
   uploadedAt: timestamp("uploaded_at").defaultNow().notNull(),
 });
 
@@ -99,7 +99,10 @@ export const veo3Generations = pgTable("veo3_generations", {
   model: text("model").default("veo-3.1-generate-preview").notNull(),
   duration: text("duration").default("8s").notNull(),
   aspectRatio: text("aspect_ratio").default("16:9").notNull(),
-  status: text("status").$type<"pending" | "processing" | "completed" | "failed">().default("pending").notNull(),
+  status: text("status")
+    .$type<"pending" | "processing" | "completed" | "failed">()
+    .default("pending")
+    .notNull(),
   videoUrl: text("video_url"),
   referenceImageUrl: text("reference_image_url"),
   referenceType: text("reference_type"),
@@ -110,27 +113,36 @@ export const veo3Generations = pgTable("veo3_generations", {
   completedAt: timestamp("completed_at"),
 });
 
-export const imageGenerations = pgTable("image_generations", {
+export const imageGenerations = pgTable(
+  "image_generations",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: integer("user_id")
+      .references(() => users.id)
+      .notNull(),
+    prompt: text("prompt").notNull(),
+    model: text("model").notNull(),
+    aspectRatio: text("aspect_ratio").notNull(),
+    imageUrl: text("image_url").notNull(),
+    status: text("status")
+      .$type<"completed" | "failed">()
+      .default("completed")
+      .notNull(),
+    errorMessage: text("error_message"),
+    metadata: jsonb("metadata"),
+
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    userIdIdx: index("image_generations_user_id_idx").on(table.userId),
+  })
+);
+
+export const youtubeDownloads = pgTable("youtube_downloads", {
   id: uuid("id").defaultRandom().primaryKey(),
   userId: integer("user_id")
     .references(() => users.id)
     .notNull(),
-  prompt: text("prompt").notNull(),
-  model: text("model").notNull(),
-  aspectRatio: text("aspect_ratio").notNull(),
-  imageUrl: text("image_url").notNull(),
-  status: text("status").$type<"completed" | "failed">().default("completed").notNull(),
-  errorMessage: text("error_message"),
-  metadata: jsonb("metadata"),
-  
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-}, (table) => ({
-  userIdIdx: index("image_generations_user_id_idx").on(table.userId),
-}));
-
-export const youtubeDownloads = pgTable("youtube_downloads", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  userId: integer("user_id").references(() => users.id).notNull(),
   videoId: text("video_id").notNull(),
   videoUrl: text("video_url").notNull(),
   title: text("title").notNull(),
@@ -138,73 +150,97 @@ export const youtubeDownloads = pgTable("youtube_downloads", {
   duration: text("duration"),
   views: text("views"),
   likes: text("likes"),
-  quality: text("quality").notNull(), 
-  filesize: integer("filesize"), 
-  downloadedVideoUrl: text("downloaded_video_url"), 
-  status: text("status").$type<"pending" | "processing" | "completed" | "failed">().default("pending").notNull(),
+  quality: text("quality").notNull(),
+  filesize: integer("filesize"),
+  downloadedVideoUrl: text("downloaded_video_url"),
+  status: text("status")
+    .$type<"pending" | "processing" | "completed" | "failed">()
+    .default("pending")
+    .notNull(),
   errorMessage: text("error_message"),
   metadata: jsonb("metadata"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   completedAt: timestamp("completed_at"),
 });
 
-export const refreshTokens = pgTable("refresh_tokens", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  userId: integer("user_id")
-    .references(() => users.id, { onDelete: "cascade" })
-    .notNull(),
-  token: text("token").notNull().unique(),
-  expiresAt: timestamp("expires_at").notNull(),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  ipAddress: text("ip_address"),
-  userAgent: text("user_agent"),
-  revoked: boolean("revoked").default(false).notNull(),
-  revokedAt: timestamp("revoked_at"),
-}, (table) => ({
-  userIdIdx: index("refresh_tokens_user_id_idx").on(table.userId),
-  tokenIdx: index("refresh_tokens_token_idx").on(table.token),
-}));
+export const refreshTokens = pgTable(
+  "refresh_tokens",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: integer("user_id")
+      .references(() => users.id, { onDelete: "cascade" })
+      .notNull(),
+    token: text("token").notNull().unique(),
+    expiresAt: timestamp("expires_at").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    ipAddress: text("ip_address"),
+    userAgent: text("user_agent"),
+    revoked: boolean("revoked").default(false).notNull(),
+    revokedAt: timestamp("revoked_at"),
+  },
+  (table) => ({
+    userIdIdx: index("refresh_tokens_user_id_idx").on(table.userId),
+    tokenIdx: index("refresh_tokens_token_idx").on(table.token),
+  })
+);
 
 // Login attempts tracking for rate limiting
-export const loginAttempts = pgTable("login_attempts", {
-  id: serial("id").primaryKey(),
-  email: text("email").notNull(),
-  ipAddress: text("ip_address").notNull(),
-  attemptedAt: timestamp("attempted_at").defaultNow().notNull(),
-  successful: boolean("successful").notNull(),
-}, (table) => ({
-  emailIdx: index("login_attempts_email_idx").on(table.email),
-  ipIdx: index("login_attempts_ip_idx").on(table.ipAddress),
-}));
+export const loginAttempts = pgTable(
+  "login_attempts",
+  {
+    id: serial("id").primaryKey(),
+    email: text("email").notNull(),
+    ipAddress: text("ip_address").notNull(),
+    attemptedAt: timestamp("attempted_at").defaultNow().notNull(),
+    successful: boolean("successful").notNull(),
+  },
+  (table) => ({
+    emailIdx: index("login_attempts_email_idx").on(table.email),
+    ipIdx: index("login_attempts_ip_idx").on(table.ipAddress),
+  })
+);
 
 // Blacklisted tokens for secure logout
-export const blacklistedTokens = pgTable("blacklisted_tokens", {
-  id: serial("id").primaryKey(),
-  token: text("token").notNull().unique(),
-  blacklistedAt: timestamp("blacklisted_at").defaultNow().notNull(),
-  expiresAt: timestamp("expires_at").notNull(),
-}, (table) => ({
-  tokenIdx: index("blacklisted_tokens_token_idx").on(table.token),
-}));
+export const blacklistedTokens = pgTable(
+  "blacklisted_tokens",
+  {
+    id: serial("id").primaryKey(),
+    token: text("token").notNull().unique(),
+    blacklistedAt: timestamp("blacklisted_at").defaultNow().notNull(),
+    expiresAt: timestamp("expires_at").notNull(),
+  },
+  (table) => ({
+    tokenIdx: index("blacklisted_tokens_token_idx").on(table.token),
+  })
+);
 
 export const subscriptions = pgTable(
   "subscriptions",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    userId: integer("user_id")  // ✅ Correct: integer (matches users.id)
+    userId: integer("user_id") // ✅ Correct: integer (matches users.id)
       .references(() => users.id, { onDelete: "cascade" })
       .notNull(),
 
     // Stripe identifiers
     stripeSubscriptionId: varchar("stripe_subscription_id", { length: 255 })
       .unique()
-      .notNull(),
-    stripeCustomerId: varchar("stripe_customer_id", { length: 255 }).notNull(),
-    stripePriceId: varchar("stripe_price_id", { length: 255 }).notNull(),
+      .default(""),
+    stripeCustomerId: varchar("stripe_customer_id", { length: 255 }).default(
+      ""
+    ),
+    stripePriceId: varchar("stripe_price_id", { length: 255 }).default(""),
 
     // Subscription details
     status: varchar("status", { length: 50 })
-      .$type<"active" | "trialing" | "canceled" | "past_due" | "incomplete" | "unpaid">()
+      .$type<
+        | "active"
+        | "trialing"
+        | "canceled"
+        | "past_due"
+        | "incomplete"
+        | "unpaid"
+      >()
       .notNull(),
     plan: varchar("plan", { length: 50 }).notNull(),
 
@@ -230,7 +266,9 @@ export const subscriptions = pgTable(
     return {
       userIdIdx: index("subscriptions_user_id_idx").on(table.userId),
       statusIdx: index("subscriptions_status_idx").on(table.status),
-      stripeSubIdIdx: index("subscriptions_stripe_sub_id_idx").on(table.stripeSubscriptionId),
-    };
-  }
+      stripeSubIdIdx: index("subscriptions_stripe_sub_id_idx").on(
+        table.stripeSubscriptionId
+      ),
+    };
+  }
 );
