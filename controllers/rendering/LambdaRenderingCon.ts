@@ -12,7 +12,7 @@ export const handleLambdaRendering = async (req: Request, res: Response) => {
       concurrency: 5,
       region: "us-east-1",
       functionName: "remotion-render-4-0-377-mem2048mb-disk2048mb-120sec",
-      serveUrl: "https://remotionlambda-useast1-ov4ef5yc3h.s3.us-east-1.amazonaws.com/sites/7afo90683q/index.html",
+      serveUrl: "https://remotionlambda-useast1-0l1u2rw3fu.s3.us-east-1.amazonaws.com/sites/viral-motion/index.html",
       composition: "DynamicVideo",
       codec: format === "mp4" ? "h264" : "h264",
       inputProps,
