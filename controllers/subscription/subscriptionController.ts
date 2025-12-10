@@ -121,9 +121,11 @@ async function getActiveSubscription(userId: number) {
     .where(eq(subscriptions.userId, userId))
     .orderBy(desc(subscriptions.createdAt));
 
-  // Return first active or trialing subscription
-  return allSubs.find(
-    (sub) => sub.status === "active" || sub.status === "trialing"
+  // ✅ FIXED: Include free_trial status
+  return allSubs.find(sub => 
+    sub.status === 'active' || 
+    sub.status === 'trialing' ||
+    sub.status === 'free_trial'  // ✅ ADDED
   );
 }
 
