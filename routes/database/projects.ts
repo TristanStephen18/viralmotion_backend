@@ -82,6 +82,38 @@ router.put(
   }
 );
 
+router.put(
+  "/update-name/:id",
+  requireAuth,
+  async (req: AuthRequest, res: Response) => {
+    const { id } = req.params;
+    const { title } = req.body;
+    const userId = req.user?.userId;
+
+    if (!userId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    const [existing] = await db
+      .select()
+      .from(projects)
+      .where(and(eq(projects.userId, userId), eq(projects.id, Number(id))));
+
+    if (!existing) {
+      return res.status(404).json({ error: "Project not found" });
+    }
+
+    // Update props and/or video url
+    const [updated] = await db
+      .update(projects)
+      .set({ title, lastUpdated: new Date() })
+      .where(eq(projects.id, Number(id)))
+      .returning();
+
+    res.json({ message: "Project updated successfully", project: updated });
+  }
+);
+
 // Get a single project by ID
 router.get("/:id", requireAuth, async (req: AuthRequest, res: Response) => {
   const { id } = req.params;
