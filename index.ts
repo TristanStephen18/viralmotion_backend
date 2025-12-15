@@ -40,6 +40,7 @@ import saveImageRoutes from "./utils/saveImage.ts";
 import imageGenRoutes from "./routes/tools/imageGen.ts";
 import subscriptionRoutes from "./routes/subscription.ts";
 import ssToCloudinaryRoutes from "./utils/screenshotSaver.ts";
+import { handleStripeWebhook } from "./controllers/subscription/webhookController.ts";
 
 const app = express();
 
@@ -82,7 +83,13 @@ app.use(
   })
 );
 
-app.use('/api/subscription/webhook', subscriptionRoutes);
+// ✅ WEBHOOK MUST COME BEFORE express.json()
+app.post(
+  '/api/subscription/webhook',
+  express.raw({ type: 'application/json' }),
+  handleStripeWebhook
+);
+
 
 // Rate limiting (general API protection)
 app.use(generalRateLimiter);
