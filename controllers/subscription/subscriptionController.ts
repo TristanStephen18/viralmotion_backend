@@ -604,7 +604,7 @@ export const confirmSubscription = async (req: AuthRequest, res: Response) => {
       metadata: { userId: user.id.toString() },
     };
 
-    // ✅ Only add trial if user NEVER had a free trial
+   // ✅ Only add trial if user NEVER had a free trial
     if (existingFreeTrial.length === 0) {
       // No prior free trial - give full trial
       console.log(`ℹ️ User never had free trial, giving one trial period`);
