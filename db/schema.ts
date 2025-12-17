@@ -252,3 +252,57 @@ export const subscriptions = pgTable(
     };
   }
 );
+
+export const adminUsers = pgTable(
+  "admin_users",
+  {
+    id: serial("id").primaryKey(),
+    email: text("email").notNull().unique(),
+    passwordHash: text("password_hash").notNull(),
+    name: text("name").notNull(),
+    role: text("role").$type<"super_admin" | "admin" | "viewer">().default("admin").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    lastLogin: timestamp("last_login"),
+    active: boolean("active").default(true).notNull(),
+  },
+  (table) => ({
+    emailIdx: index("admin_users_email_idx").on(table.email),
+  })
+);
+
+// Page visits tracking
+export const pageVisits = pgTable(
+  "page_visits",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: integer("user_id").references(() => users.id),
+    page: text("page").notNull(),
+    userAgent: text("user_agent"),
+    ipAddress: text("ip_address"),
+    referrer: text("referrer"),
+    sessionId: text("session_id"),
+    visitedAt: timestamp("visited_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    userIdIdx: index("page_visits_user_id_idx").on(table.userId),
+    pageIdx: index("page_visits_page_idx").on(table.page),
+    visitedAtIdx: index("page_visits_visited_at_idx").on(table.visitedAt),
+  })
+);
+
+// Analytics events (custom tracking)
+export const analyticsEvents = pgTable(
+  "analytics_events",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: integer("user_id").references(() => users.id),
+    eventType: text("event_type").notNull(), // signup, login, subscription, video_created, etc.
+    eventData: jsonb("event_data"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    userIdIdx: index("analytics_events_user_id_idx").on(table.userId),
+    eventTypeIdx: index("analytics_events_event_type_idx").on(table.eventType),
+    createdAtIdx: index("analytics_events_created_at_idx").on(table.createdAt),
+  })
+);
