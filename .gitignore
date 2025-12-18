@@ -3,3 +3,4 @@ remotion_templates/TemplateHolder/node_modules
 .env
 remotion_templates
 outputs
+.py
