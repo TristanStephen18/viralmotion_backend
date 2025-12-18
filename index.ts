@@ -41,6 +41,7 @@ import imageGenRoutes from "./routes/tools/imageGen.ts";
 import subscriptionRoutes from "./routes/subscription.ts";
 import ssToCloudinaryRoutes from "./utils/screenshotSaver.ts";
 import { handleStripeWebhook } from "./controllers/subscription/webhookController.ts";
+import adminRoutes from "./routes/admin.ts";
 
 const app = express();
 
@@ -157,6 +158,7 @@ app.use("/api/youtube-v2", youtubeRoutes);
 app.use('/api/tools/save-image', saveImageRoutes);
 app.use("/api/image-generation", imageGenRoutes);
 app.use("/api/subscription", subscriptionRoutes);
+app.use("/admin", adminRoutes);
 
 //new routes
 app.use("/cloudinary", ssToCloudinaryRoutes);

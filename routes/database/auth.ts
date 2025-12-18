@@ -5,6 +5,13 @@ import {
   loginAttempts,
   refreshTokens,
   subscriptions,
+  projects,        
+  renders,         
+  uploads,         
+  datasets,        
+  veo3Generations, 
+  imageGenerations,
+  youtubeDownloads,
 } from "../../db/schema.ts";
 import { db } from "../../db/client.ts";
 import { requireAuth, require2FA } from "../../utils/authmiddleware.ts";
@@ -41,6 +48,8 @@ import {
 import { JWT_SECRET, LOCKOUT_CONFIG } from "./config.ts";
 import jwt from "jsonwebtoken";
 import { GoTrueAdminApi } from "@supabase/supabase-js";
+import { stripe } from "../../config/stripe.ts";
+
 
 const router = Router();
 
@@ -851,6 +860,94 @@ router.post("/google-login", async (req, res) => {
   } catch (err) {
     console.error("Google login error:", err);
     res.status(500).json({ error: "Login failed" });
+  }
+});
+
+router.delete("/delete-account", requireAuth, async (req: AuthRequest, res) => {
+  const userId = req.user?.userId;
+  const { password, twoFactorCode } = req.body;
+
+  if (!userId || !password) {
+    return res.status(400).json({ error: "Password required" });
+  }
+
+  try {
+    // 1. Get user
+    const [user] = await db.select().from(users).where(eq(users.id, userId));
+
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    // 2. Verify password
+    const valid = await comparePassword(password, user.passwordHash);
+    if (!valid) {
+      return res.status(400).json({ error: "Invalid password" });
+    }
+
+    // 3. Verify 2FA if enabled
+    if (user.twoFactorEnabled) {
+      if (!twoFactorCode) {
+        return res.status(400).json({
+          error: "2FA code required",
+          requires2FA: true,
+        });
+      }
+
+      if (!user.twoFactorSecret) {
+        return res.status(400).json({ error: "2FA not properly configured" });
+      }
+
+      const valid2FA = verifyTwoFactorToken(twoFactorCode, user.twoFactorSecret);
+      if (!valid2FA) {
+        return res.status(400).json({ error: "Invalid 2FA code" });
+      }
+    }
+
+    // 4. Cancel Stripe subscription if exists
+    const [subscription] = await db
+      .select()
+      .from(subscriptions)
+      .where(eq(subscriptions.userId, userId))
+      .limit(1);
+
+    if (subscription?.stripeSubscriptionId) {
+      try {
+        await stripe.subscriptions.cancel(subscription.stripeSubscriptionId);
+        console.log(`✅ Canceled Stripe subscription: ${subscription.stripeSubscriptionId}`);
+      } catch (stripeError) {
+        console.error("⚠️ Failed to cancel Stripe subscription:", stripeError);
+        // Continue with deletion even if Stripe cancellation fails
+      }
+    }
+
+    // 5. Delete all user data (tables WITHOUT cascade delete)
+    await db.delete(projects).where(eq(projects.userId, userId));
+    await db.delete(renders).where(eq(renders.userId, userId));
+    await db.delete(uploads).where(eq(uploads.userId, userId));
+    await db.delete(datasets).where(eq(datasets.userId, userId));
+    await db.delete(veo3Generations).where(eq(veo3Generations.userId, userId));
+    await db.delete(imageGenerations).where(eq(imageGenerations.userId, userId));
+    await db.delete(youtubeDownloads).where(eq(youtubeDownloads.userId, userId));
+    await db.delete(loginAttempts).where(eq(loginAttempts.email, user.email));
+
+    // Note: refreshTokens and subscriptions have onDelete: "cascade" so they'll auto-delete
+
+    // 6. Delete user (this will cascade delete refreshTokens and subscriptions)
+    await db.delete(users).where(eq(users.id, userId));
+
+    // 7. Clear cookies
+    clearAuthCookies(res);
+
+    console.log(`✅ Account deleted for user ${user.email} (ID: ${userId})`);
+
+    res.json({
+      success: true,
+      message: "Account deleted successfully",
+    });
+  } catch (err) {
+    console.error("Delete account error:", err);
+    res.status(500).json({ error: "Failed to delete account" });
   }
 });
 
