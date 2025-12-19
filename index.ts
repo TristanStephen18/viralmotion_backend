@@ -42,6 +42,7 @@ import subscriptionRoutes from "./routes/subscription.ts";
 import ssToCloudinaryRoutes from "./utils/screenshotSaver.ts";
 import { handleStripeWebhook } from "./controllers/subscription/webhookController.ts";
 import adminRoutes from "./routes/admin.ts";
+import analyticsRoutes from "./routes/analytics.ts";
 
 const app = express();
 
@@ -159,6 +160,7 @@ app.use('/api/tools/save-image', saveImageRoutes);
 app.use("/api/image-generation", imageGenRoutes);
 app.use("/api/subscription", subscriptionRoutes);
 app.use("/admin", adminRoutes);
+app.use("/api/analytics", analyticsRoutes);
 
 //new routes
 app.use("/cloudinary", ssToCloudinaryRoutes);
