@@ -551,6 +551,7 @@ export const confirmSubscription = async (req: AuthRequest, res: Response) => {
 
     console.log(`💳 Payment method attached to customer`);
 
+    
     // ✅ Create subscription WITHOUT trial - bill immediately
     const subscription = await stripe.subscriptions.create({
       customer: user.stripeCustomerId,
@@ -566,16 +567,28 @@ export const confirmSubscription = async (req: AuthRequest, res: Response) => {
     // ✅ Type cast to access all properties
     const subData = subscription as any;
 
+    // ✅ FIXED: Extract period dates from items.data[0]
+    const subscriptionItem = subData.items?.data?.[0];
+
     console.log(`✅ Stripe subscription created: ${subscription.id}`);
     console.log(`   Status: ${subscription.status}`);
-    console.log(`   Current period start: ${subData.current_period_start}`);
-    console.log(`   Current period end: ${subData.current_period_end}`);
+    console.log(`   Subscription item:`, subscriptionItem);
+
+    // ✅ Get period dates from subscription item, fallback to billing_cycle_anchor
+    let periodStart =
+      subscriptionItem?.current_period_start ||
+      subData.billing_cycle_anchor ||
+      subData.created;
+    let periodEnd = subscriptionItem?.current_period_end;
+
+    console.log(`   Period start (raw): ${periodStart}`);
+    console.log(`   Period end (raw): ${periodEnd}`);
 
     // ✅ Validate dates before conversion
-    if (!subData.current_period_start || !subData.current_period_end) {
+    if (!periodStart || !periodEnd) {
       console.error(`❌ Missing period timestamps from Stripe`);
       console.error(
-        `   Subscription object:`,
+        `   Full subscription:`,
         JSON.stringify(subscription, null, 2)
       );
       return res.status(500).json({
@@ -591,8 +604,8 @@ export const confirmSubscription = async (req: AuthRequest, res: Response) => {
       return new Date(timestamp * 1000);
     };
 
-    const currentPeriodStart = toDate(subData.current_period_start);
-    const currentPeriodEnd = toDate(subData.current_period_end);
+    const currentPeriodStart = toDate(periodStart);
+    const currentPeriodEnd = toDate(periodEnd);
 
     // Validate Date objects
     if (
@@ -602,12 +615,8 @@ export const confirmSubscription = async (req: AuthRequest, res: Response) => {
       isNaN(currentPeriodEnd.getTime())
     ) {
       console.error(`❌ Failed to convert timestamps to valid dates`);
-      console.error(
-        `   Start: ${subData.current_period_start} -> ${currentPeriodStart}`
-      );
-      console.error(
-        `   End: ${subData.current_period_end} -> ${currentPeriodEnd}`
-      );
+      console.error(`   Start: ${periodStart} -> ${currentPeriodStart}`);
+      console.error(`   End: ${periodEnd} -> ${currentPeriodEnd}`);
       return res.status(500).json({
         success: false,
         error: "Failed to process subscription dates",

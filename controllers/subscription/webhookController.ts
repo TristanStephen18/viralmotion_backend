@@ -124,8 +124,17 @@ export const handleStripeWebhook = async (req: Request, res: Response) => {
 
           console.log(`   User ID: ${userId}`);
           console.log(`   Status: ${stripeSubscription.status}`);
-          console.log(`   Period start (raw): ${subData.current_period_start}`);
-          console.log(`   Period end (raw): ${subData.current_period_end}`);
+
+          // ✅ FIXED: Extract period dates from items.data[0]
+          const subscriptionItem = subData.items?.data?.[0];
+          let periodStartRaw =
+            subscriptionItem?.current_period_start ||
+            subData.billing_cycle_anchor ||
+            subData.created;
+          let periodEndRaw = subscriptionItem?.current_period_end;
+
+          console.log(`   Period start (raw): ${periodStartRaw}`);
+          console.log(`   Period end (raw): ${periodEndRaw}`);
 
           // Check if already exists in database
           const [existing] = await db
@@ -154,22 +163,20 @@ export const handleStripeWebhook = async (req: Request, res: Response) => {
             )
             .limit(1);
 
-          // ✅ Use direct Date conversion instead of safeTimestampToDate
+          // ✅ Convert dates
           let periodStart: Date | null = null;
           let periodEnd: Date | null = null;
 
           try {
-            if (subData.current_period_start) {
-              periodStart = new Date(
-                Number(subData.current_period_start) * 1000
-              );
+            if (periodStartRaw) {
+              periodStart = new Date(Number(periodStartRaw) * 1000);
               console.log(
                 `   Period start (converted): ${periodStart.toISOString()}`
               );
             }
 
-            if (subData.current_period_end) {
-              periodEnd = new Date(Number(subData.current_period_end) * 1000);
+            if (periodEndRaw) {
+              periodEnd = new Date(Number(periodEndRaw) * 1000);
               console.log(
                 `   Period end (converted): ${periodEnd.toISOString()}`
               );
@@ -186,11 +193,9 @@ export const handleStripeWebhook = async (req: Request, res: Response) => {
           ) {
             console.error(`❌ Invalid period dates in subscription.created`);
             console.error(
-              `   Period start: ${subData.current_period_start} -> ${periodStart}`
+              `   Period start: ${periodStartRaw} -> ${periodStart}`
             );
-            console.error(
-              `   Period end: ${subData.current_period_end} -> ${periodEnd}`
-            );
+            console.error(`   Period end: ${periodEndRaw} -> ${periodEnd}`);
             break;
           }
 
