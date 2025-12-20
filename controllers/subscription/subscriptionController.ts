@@ -188,7 +188,9 @@ export const createCheckoutSession = async (
       metadata: { userId: user.id.toString() },
     });
 
-    console.log(`✅ Checkout session created for user ${userId} - NO TRIAL (already had free trial)`);
+    console.log(
+      `✅ Checkout session created for user ${userId} - NO TRIAL (already had free trial)`
+    );
 
     res.json({ success: true, url: session.url });
   } catch (error: any) {
@@ -305,13 +307,16 @@ export const getSubscriptionDetails = async (
 
     const formattedSubscription = {
       ...subscription,
-      currentPeriodStart: subscription.currentPeriodStart?.toISOString() || null,
+      currentPeriodStart:
+        subscription.currentPeriodStart?.toISOString() || null,
       currentPeriodEnd: subscription.currentPeriodEnd?.toISOString() || null,
       trialStart: subscription.trialStart?.toISOString() || null,
       trialEnd: subscription.trialEnd?.toISOString() || null,
       canceledAt: subscription.canceledAt?.toISOString() || null,
-      createdAt: subscription.createdAt?.toISOString() || new Date().toISOString(),
-      updatedAt: subscription.updatedAt?.toISOString() || new Date().toISOString(),
+      createdAt:
+        subscription.createdAt?.toISOString() || new Date().toISOString(),
+      updatedAt:
+        subscription.updatedAt?.toISOString() || new Date().toISOString(),
     };
 
     res.json({
@@ -404,7 +409,11 @@ export const reactivateSubscription = async (
     }
 
     const subscription = await getLatestSubscription(userId);
-    if (!subscription || !subscription.cancelAtPeriodEnd || !subscription.stripeSubscriptionId) {
+    if (
+      !subscription ||
+      !subscription.cancelAtPeriodEnd ||
+      !subscription.stripeSubscriptionId
+    ) {
       return res.status(400).json({
         success: false,
         error: "Subscription is not scheduled for cancellation",
@@ -513,7 +522,9 @@ export const confirmSubscription = async (req: AuthRequest, res: Response) => {
         .json({ success: false, error: "Customer not found" });
     }
 
-    console.log(`📝 Confirming subscription for user ${userId} - NO TRIAL (already had free trial)...`);
+    console.log(
+      `📝 Confirming subscription for user ${userId} - NO TRIAL (already had free trial)...`
+    );
 
     // Check if user has existing free trial
     const [existingFreeTrial] = await db
@@ -538,6 +549,8 @@ export const confirmSubscription = async (req: AuthRequest, res: Response) => {
       },
     });
 
+    console.log(`💳 Payment method attached to customer`);
+
     // ✅ Create subscription WITHOUT trial - bill immediately
     const subscription = await stripe.subscriptions.create({
       customer: user.stripeCustomerId,
@@ -550,9 +563,26 @@ export const confirmSubscription = async (req: AuthRequest, res: Response) => {
       metadata: { userId: user.id.toString() },
     });
 
+    // ✅ Type cast to access all properties
     const subData = subscription as any;
 
-    console.log(`✅ Stripe subscription created: ${subscription.id} - Status: ${subscription.status} - Billing immediately`);
+    console.log(`✅ Stripe subscription created: ${subscription.id}`);
+    console.log(`   Status: ${subscription.status}`);
+    console.log(`   Current period start: ${subData.current_period_start}`);
+    console.log(`   Current period end: ${subData.current_period_end}`);
+
+    // ✅ Validate dates before conversion
+    if (!subData.current_period_start || !subData.current_period_end) {
+      console.error(`❌ Missing period timestamps from Stripe`);
+      console.error(
+        `   Subscription object:`,
+        JSON.stringify(subscription, null, 2)
+      );
+      return res.status(500).json({
+        success: false,
+        error: "Invalid subscription data from Stripe",
+      });
+    }
 
     const toDate = (ts: any): Date | null => {
       if (!ts) return null;
@@ -564,17 +594,58 @@ export const confirmSubscription = async (req: AuthRequest, res: Response) => {
     const currentPeriodStart = toDate(subData.current_period_start);
     const currentPeriodEnd = toDate(subData.current_period_end);
 
-    if (!currentPeriodStart || !currentPeriodEnd) {
-      console.error("❌ Failed to convert dates");
+    // Validate Date objects
+    if (
+      !currentPeriodStart ||
+      !currentPeriodEnd ||
+      isNaN(currentPeriodStart.getTime()) ||
+      isNaN(currentPeriodEnd.getTime())
+    ) {
+      console.error(`❌ Failed to convert timestamps to valid dates`);
+      console.error(
+        `   Start: ${subData.current_period_start} -> ${currentPeriodStart}`
+      );
+      console.error(
+        `   End: ${subData.current_period_end} -> ${currentPeriodEnd}`
+      );
       return res.status(500).json({
         success: false,
         error: "Failed to process subscription dates",
       });
     }
 
-    // Update or create subscription in database
+    console.log(`📅 Converted dates:`);
+    console.log(`   Start: ${currentPeriodStart.toISOString()}`);
+    console.log(`   End: ${currentPeriodEnd.toISOString()}`);
+
+    // ✅ Wait 2 seconds for webhook to process
+    console.log(`⏳ Waiting for webhook to process...`);
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+
+    // Check if webhook already created/updated the subscription
+    const [webhookCreated] = await db
+      .select()
+      .from(subscriptions)
+      .where(eq(subscriptions.stripeSubscriptionId, subscription.id));
+
+    if (webhookCreated) {
+      console.log(
+        `✅ Webhook already processed subscription, using existing record`
+      );
+
+      return res.json({
+        success: true,
+        subscription: {
+          id: subscription.id,
+          status: subscription.status,
+          currentPeriodEnd: currentPeriodEnd.toISOString(),
+        },
+      });
+    }
+
+    // Webhook hasn't processed yet, update/create ourselves
     if (existingFreeTrial) {
-      console.log(`🔄 Converting free trial to paid subscription`);
+      console.log(`🔄 Converting free trial to paid subscription (API)`);
 
       await db
         .update(subscriptions)
@@ -591,8 +662,10 @@ export const confirmSubscription = async (req: AuthRequest, res: Response) => {
           updatedAt: new Date(),
         })
         .where(eq(subscriptions.id, existingFreeTrial.id));
+
+      console.log(`✅ Free trial converted to paid subscription`);
     } else {
-      console.log(`✨ Creating new paid subscription`);
+      console.log(`✨ Creating new paid subscription (API)`);
 
       await db.insert(subscriptions).values({
         userId: user.id,
@@ -607,9 +680,13 @@ export const confirmSubscription = async (req: AuthRequest, res: Response) => {
         trialStart: null,
         trialEnd: null,
       });
+
+      console.log(`✅ Subscription created in database`);
     }
 
-    console.log(`✅ Subscription ${subscription.id} confirmed for user ${userId}`);
+    console.log(
+      `✅ Subscription ${subscription.id} confirmed for user ${userId}`
+    );
 
     res.json({
       success: true,
@@ -620,7 +697,8 @@ export const confirmSubscription = async (req: AuthRequest, res: Response) => {
       },
     });
   } catch (error: any) {
-    console.error("❌ Confirm subscription error:", error);
+    console.error("❌ Confirm subscription error:", error.message);
+    console.error("   Stack:", error.stack);
     res.status(500).json({ success: false, error: error.message });
   }
 };

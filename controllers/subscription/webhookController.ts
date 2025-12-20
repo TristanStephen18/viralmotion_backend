@@ -3,18 +3,18 @@ import Stripe from "stripe";
 import { stripe, STRIPE_CONFIG } from "../../config/stripe.ts";
 import { db } from "../../db/client.ts";
 import { subscriptions } from "../../db/schema.ts";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 
 // Helper function to safely convert timestamp to Date
 function safeTimestampToDate(timestamp: any): Date | null {
   if (!timestamp) return null;
-  
+
   const ts = Number(timestamp);
   if (isNaN(ts) || ts <= 0) return null;
-  
+
   const date = new Date(ts * 1000);
   if (isNaN(date.getTime())) return null;
-  
+
   return date;
 }
 
@@ -104,6 +104,122 @@ export const handleStripeWebhook = async (req: Request, res: Response) => {
         break;
       }
 
+      // SUBSCRIPTION CREATED (handles direct API subscriptions)
+      case "customer.subscription.created": {
+        try {
+          const stripeSubscription = event.data.object as Stripe.Subscription;
+          const subData = stripeSubscription as any;
+
+          console.log(
+            `📦 Subscription created in Stripe: ${stripeSubscription.id}`
+          );
+
+          // Get userId from metadata
+          const userId = subData.metadata?.userId;
+
+          if (!userId) {
+            console.log(`⚠️ No userId in subscription metadata, skipping`);
+            break;
+          }
+
+          console.log(`   User ID: ${userId}`);
+          console.log(`   Status: ${stripeSubscription.status}`);
+
+          // Check if already exists in database
+          const [existing] = await db
+            .select()
+            .from(subscriptions)
+            .where(
+              eq(subscriptions.stripeSubscriptionId, stripeSubscription.id)
+            );
+
+          if (existing) {
+            console.log(
+              `ℹ️ Subscription ${stripeSubscription.id} already in database, skipping`
+            );
+            break;
+          }
+
+          // Check for existing free trial to update
+          const [existingFreeTrial] = await db
+            .select()
+            .from(subscriptions)
+            .where(
+              and(
+                eq(subscriptions.userId, parseInt(userId, 10)),
+                eq(subscriptions.status, "free_trial")
+              )
+            )
+            .limit(1);
+
+          const periodStart = safeTimestampToDate(subData.current_period_start);
+          const periodEnd = safeTimestampToDate(subData.current_period_end);
+
+          if (!periodStart || !periodEnd) {
+            console.error("❌ Invalid period dates in subscription.created");
+            break;
+          }
+
+          if (existingFreeTrial) {
+            // Update existing free trial record
+            console.log(
+              `🔄 Converting free trial to paid subscription (webhook)`
+            );
+
+            await db
+              .update(subscriptions)
+              .set({
+                stripeSubscriptionId: stripeSubscription.id,
+                stripeCustomerId:
+                  typeof stripeSubscription.customer === "string"
+                    ? stripeSubscription.customer
+                    : stripeSubscription.customer?.id || "",
+                stripePriceId: stripeSubscription.items.data[0].price.id,
+                status: stripeSubscription.status as any,
+                plan: "pro",
+                currentPeriodStart: periodStart,
+                currentPeriodEnd: periodEnd,
+                cancelAtPeriodEnd: subData.cancel_at_period_end || false,
+                trialStart: safeTimestampToDate(subData.trial_start),
+                trialEnd: safeTimestampToDate(subData.trial_end),
+                updatedAt: new Date(),
+              })
+              .where(eq(subscriptions.id, existingFreeTrial.id));
+
+            console.log(`✅ Free trial converted to paid subscription`);
+          } else {
+            // Create new subscription record
+            console.log(`✨ Creating new subscription record (webhook)`);
+
+            await db.insert(subscriptions).values({
+              userId: parseInt(userId, 10),
+              stripeSubscriptionId: stripeSubscription.id,
+              stripeCustomerId:
+                typeof stripeSubscription.customer === "string"
+                  ? stripeSubscription.customer
+                  : stripeSubscription.customer?.id || "",
+              stripePriceId: stripeSubscription.items.data[0].price.id,
+              status: stripeSubscription.status as any,
+              plan: "pro",
+              currentPeriodStart: periodStart,
+              currentPeriodEnd: periodEnd,
+              cancelAtPeriodEnd: subData.cancel_at_period_end || false,
+              trialStart: safeTimestampToDate(subData.trial_start),
+              trialEnd: safeTimestampToDate(subData.trial_end),
+            });
+
+            console.log(`✅ Subscription created in database`);
+          }
+        } catch (createError: any) {
+          console.error(
+            `❌ Error handling subscription.created:`,
+            createError.message
+          );
+          console.error(`   Stack:`, createError.stack);
+        }
+        break;
+      }
+
       // SUBSCRIPTION UPDATED
       case "customer.subscription.updated": {
         const stripeSubscription = event.data.object as Stripe.Subscription;
@@ -119,7 +235,9 @@ export const handleStripeWebhook = async (req: Request, res: Response) => {
           .where(eq(subscriptions.stripeSubscriptionId, stripeSubscription.id));
 
         if (!existingSubscription) {
-          console.log(`⚠️ Subscription ${stripeSubscription.id} not found in database`);
+          console.log(
+            `⚠️ Subscription ${stripeSubscription.id} not found in database`
+          );
           break;
         }
 
@@ -161,7 +279,9 @@ export const handleStripeWebhook = async (req: Request, res: Response) => {
           updateData.trialEnd = trialEnd;
         }
 
-        console.log(`   Updating fields: ${Object.keys(updateData).join(', ')}`);
+        console.log(
+          `   Updating fields: ${Object.keys(updateData).join(", ")}`
+        );
 
         await db
           .update(subscriptions)
@@ -260,7 +380,7 @@ export const handleStripeWebhook = async (req: Request, res: Response) => {
     console.error("❌ Webhook handler error:", error.message);
     console.error("   Event type:", event?.type);
     console.error("   Stack:", error.stack);
-    
+
     // Still return 200 to prevent Stripe retries
     res.status(500).json({ error: error.message });
   }
