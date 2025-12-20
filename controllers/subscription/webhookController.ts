@@ -124,6 +124,8 @@ export const handleStripeWebhook = async (req: Request, res: Response) => {
 
           console.log(`   User ID: ${userId}`);
           console.log(`   Status: ${stripeSubscription.status}`);
+          console.log(`   Period start (raw): ${subData.current_period_start}`);
+          console.log(`   Period end (raw): ${subData.current_period_end}`);
 
           // Check if already exists in database
           const [existing] = await db
@@ -152,11 +154,43 @@ export const handleStripeWebhook = async (req: Request, res: Response) => {
             )
             .limit(1);
 
-          const periodStart = safeTimestampToDate(subData.current_period_start);
-          const periodEnd = safeTimestampToDate(subData.current_period_end);
+          // ✅ Use direct Date conversion instead of safeTimestampToDate
+          let periodStart: Date | null = null;
+          let periodEnd: Date | null = null;
 
-          if (!periodStart || !periodEnd) {
-            console.error("❌ Invalid period dates in subscription.created");
+          try {
+            if (subData.current_period_start) {
+              periodStart = new Date(
+                Number(subData.current_period_start) * 1000
+              );
+              console.log(
+                `   Period start (converted): ${periodStart.toISOString()}`
+              );
+            }
+
+            if (subData.current_period_end) {
+              periodEnd = new Date(Number(subData.current_period_end) * 1000);
+              console.log(
+                `   Period end (converted): ${periodEnd.toISOString()}`
+              );
+            }
+          } catch (dateError: any) {
+            console.error(`❌ Error converting dates:`, dateError.message);
+          }
+
+          if (
+            !periodStart ||
+            !periodEnd ||
+            isNaN(periodStart.getTime()) ||
+            isNaN(periodEnd.getTime())
+          ) {
+            console.error(`❌ Invalid period dates in subscription.created`);
+            console.error(
+              `   Period start: ${subData.current_period_start} -> ${periodStart}`
+            );
+            console.error(
+              `   Period end: ${subData.current_period_end} -> ${periodEnd}`
+            );
             break;
           }
 
@@ -180,8 +214,12 @@ export const handleStripeWebhook = async (req: Request, res: Response) => {
                 currentPeriodStart: periodStart,
                 currentPeriodEnd: periodEnd,
                 cancelAtPeriodEnd: subData.cancel_at_period_end || false,
-                trialStart: safeTimestampToDate(subData.trial_start),
-                trialEnd: safeTimestampToDate(subData.trial_end),
+                trialStart: subData.trial_start
+                  ? new Date(Number(subData.trial_start) * 1000)
+                  : null,
+                trialEnd: subData.trial_end
+                  ? new Date(Number(subData.trial_end) * 1000)
+                  : null,
                 updatedAt: new Date(),
               })
               .where(eq(subscriptions.id, existingFreeTrial.id));
@@ -204,8 +242,12 @@ export const handleStripeWebhook = async (req: Request, res: Response) => {
               currentPeriodStart: periodStart,
               currentPeriodEnd: periodEnd,
               cancelAtPeriodEnd: subData.cancel_at_period_end || false,
-              trialStart: safeTimestampToDate(subData.trial_start),
-              trialEnd: safeTimestampToDate(subData.trial_end),
+              trialStart: subData.trial_start
+                ? new Date(Number(subData.trial_start) * 1000)
+                : null,
+              trialEnd: subData.trial_end
+                ? new Date(Number(subData.trial_end) * 1000)
+                : null,
             });
 
             console.log(`✅ Subscription created in database`);
