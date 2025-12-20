@@ -294,16 +294,33 @@ export const handleStripeWebhook = async (req: Request, res: Response) => {
           updatedAt: new Date(),
         };
 
-        // Validate and set period dates
-        const periodStart = safeTimestampToDate(subData.current_period_start);
-        const periodEnd = safeTimestampToDate(subData.current_period_end);
+        // ✅ FIXED: Extract period dates from items.data[0]
+        const subscriptionItem = subData.items?.data?.[0];
+        const periodStartRaw = subscriptionItem?.current_period_start;
+        const periodEndRaw = subscriptionItem?.current_period_end;
 
-        if (periodStart) {
-          updateData.currentPeriodStart = periodStart;
+        console.log(`   Period start (raw): ${periodStartRaw}`);
+        console.log(`   Period end (raw): ${periodEndRaw}`);
+
+        // Validate and set period dates
+        if (periodStartRaw) {
+          const periodStart = new Date(Number(periodStartRaw) * 1000);
+          if (!isNaN(periodStart.getTime())) {
+            updateData.currentPeriodStart = periodStart;
+            console.log(
+              `   Period start (converted): ${periodStart.toISOString()}`
+            );
+          }
         }
 
-        if (periodEnd) {
-          updateData.currentPeriodEnd = periodEnd;
+        if (periodEndRaw) {
+          const periodEnd = new Date(Number(periodEndRaw) * 1000);
+          if (!isNaN(periodEnd.getTime())) {
+            updateData.currentPeriodEnd = periodEnd;
+            console.log(
+              `   Period end (converted): ${periodEnd.toISOString()}`
+            );
+          }
         }
 
         // Set cancellation fields
