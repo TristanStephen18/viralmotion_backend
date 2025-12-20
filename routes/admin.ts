@@ -12,7 +12,13 @@ import {
 import {
   getUsers,
   getUserDetails,
+  createLifetimeAccount,
 } from "../controllers/admin/userManagementController.ts";
+import {
+  grantLifetimeAccess,
+  revokeLifetimeAccess,
+  getLifetimeAccounts,
+} from "../controllers/admin/subscriptionManagement.ts";
 
 const router = Router();
 
@@ -39,9 +45,16 @@ router.get("/analytics/visits", verifyAdminToken, getVisitAnalytics);
 router.get("/users", verifyAdminToken, getUsers);
 router.get("/users/:userId", verifyAdminToken, getUserDetails);
 
-// ========== SUPER ADMIN ONLY ROUTES ==========
+// ========== LIFETIME ACCESS MANAGEMENT (ANY ADMIN) ==========
 
-// Future: Add more admin users (super admin only)
-// router.post("/users/invite", verifyAdminToken, requireRole(["super_admin"]), inviteAdmin);
+// Create lifetime account directly
+router.post("/users/create-lifetime", verifyAdminToken, createLifetimeAccount);
+
+// Grant/revoke lifetime access to existing users
+router.post("/subscriptions/grant-lifetime", verifyAdminToken, grantLifetimeAccess);
+router.post("/subscriptions/revoke-lifetime", verifyAdminToken, revokeLifetimeAccess);
+
+// Get all lifetime accounts
+router.get("/subscriptions/lifetime", verifyAdminToken, getLifetimeAccounts);
 
 export default router;

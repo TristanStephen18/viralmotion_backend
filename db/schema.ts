@@ -223,13 +223,32 @@ export const subscriptions = pgTable(
       .notNull(),
 
     // ✅ FIXED: Make these nullable for free trials
-    stripeSubscriptionId: varchar("stripe_subscription_id", { length: 255 }).unique(),
+    stripeSubscriptionId: varchar("stripe_subscription_id", {
+      length: 255,
+    }).unique(),
     stripeCustomerId: varchar("stripe_customer_id", { length: 255 }),
     stripePriceId: varchar("stripe_price_id", { length: 255 }),
 
+    // ✅ Lifetime/Company Account Fields
+    isLifetime: boolean("is_lifetime").default(false).notNull(),
+    isCompanyAccount: boolean("is_company_account").default(false).notNull(),
+    companyName: text("company_name"),
+    specialNotes: text("special_notes"),
+    grantedBy: integer("granted_by").references(() => adminUsers.id),
+
     // Rest stays the same...
     status: varchar("status", { length: 50 })
-      .$type<"free_trial" | "active" | "trialing" | "canceled" | "past_due" | "incomplete" | "unpaid">()
+      .$type<
+        | "free_trial"
+        | "active"
+        | "trialing"
+        | "canceled"
+        | "past_due"
+        | "incomplete"
+        | "unpaid"
+        | "lifetime"
+        | "company"
+      >()
       .notNull(),
     plan: varchar("plan", { length: 50 }).notNull(),
     currentPeriodStart: timestamp("current_period_start").notNull(),
@@ -260,7 +279,10 @@ export const adminUsers = pgTable(
     email: text("email").notNull().unique(),
     passwordHash: text("password_hash").notNull(),
     name: text("name").notNull(),
-    role: text("role").$type<"super_admin" | "admin" | "viewer">().default("admin").notNull(),
+    role: text("role")
+      .$type<"super_admin" | "admin" | "viewer">()
+      .default("admin")
+      .notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     lastLogin: timestamp("last_login"),
     active: boolean("active").default(true).notNull(),
