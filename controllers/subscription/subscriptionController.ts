@@ -18,7 +18,6 @@ async function syncSubscriptionFromStripe(
   try {
     console.log(`🔄 Syncing subscription from Stripe for user ${userId}...`);
 
-    // List subscriptions
     const list = await stripe.subscriptions.list({
       customer: stripeCustomerId,
       limit: 1,
@@ -30,11 +29,8 @@ async function syncSubscriptionFromStripe(
     }
 
     const subId = list.data[0].id;
-
-    // Retrieve full subscription
     const stripeSub = await stripe.subscriptions.retrieve(subId);
 
-    // Check if already in database
     const [existing] = await db
       .select()
       .from(subscriptions)
@@ -46,44 +42,19 @@ async function syncSubscriptionFromStripe(
     }
 
     const subData = stripeSub as any;
+    const periodStart = subData.current_period_start || subData.created;
+    const periodEnd = subData.current_period_end;
 
-    console.log("📊 Subscription data:");
-    console.log("  Status:", subData.status);
-    console.log("  trial_start:", subData.trial_start);
-    console.log("  trial_end:", subData.trial_end);
-    console.log("  current_period_start:", subData.current_period_start);
-    console.log("  current_period_end:", subData.current_period_end);
-
-    // ✅ For trialing subscriptions, use trial dates as current period
-    let periodStart, periodEnd;
-
-    if (subData.status === "trialing") {
-      // Use trial dates
-      if (!subData.trial_start || !subData.trial_end) {
-        console.error("❌ Missing trial timestamps for trialing subscription");
-        return null;
-      }
-      periodStart = subData.trial_start;
-      periodEnd = subData.trial_end;
-      console.log("✅ Using trial period as current period");
-    } else {
-      // Use billing period
-      if (!subData.current_period_start || !subData.current_period_end) {
-        console.error("❌ Missing period timestamps for active subscription");
-        return null;
-      }
-      periodStart = subData.current_period_start;
-      periodEnd = subData.current_period_end;
-      console.log("✅ Using billing period");
+    if (!periodStart || !periodEnd) {
+      console.error("❌ Missing period timestamps");
+      return null;
     }
 
-    // Safe date conversion
     const toDate = (ts: any): Date | null => {
       if (!ts) return null;
       return new Date(Number(ts) * 1000);
     };
 
-    // Create subscription record
     const [newSub] = await db
       .insert(subscriptions)
       .values({
@@ -113,7 +84,6 @@ async function syncSubscriptionFromStripe(
   }
 }
 
-// Helper: Get active subscription for user
 async function getActiveSubscription(userId: number) {
   const allSubs = await db
     .select()
@@ -121,16 +91,14 @@ async function getActiveSubscription(userId: number) {
     .where(eq(subscriptions.userId, userId))
     .orderBy(desc(subscriptions.createdAt));
 
-  // ✅ FIXED: Include free_trial status
   return allSubs.find(
     (sub) =>
       sub.status === "active" ||
       sub.status === "trialing" ||
-      sub.status === "free_trial" // ✅ ADDED
+      sub.status === "free_trial"
   );
 }
 
-// Helper: Get latest subscription (any status)
 async function getLatestSubscription(userId: number) {
   const allSubs = await db
     .select()
@@ -138,12 +106,11 @@ async function getLatestSubscription(userId: number) {
     .where(eq(subscriptions.userId, userId))
     .orderBy(desc(subscriptions.createdAt));
 
-  // Return the first subscription that is active, trialing, or free_trial
   return allSubs.find(
     (sub) =>
       sub.status === "active" ||
       sub.status === "trialing" ||
-      sub.status === "free_trial" // ✅ NEW: Include free trials
+      sub.status === "free_trial"
   );
 }
 
@@ -154,13 +121,12 @@ async function getPaidSubscription(userId: number) {
     .where(eq(subscriptions.userId, userId))
     .orderBy(desc(subscriptions.createdAt));
 
-  // Only return paid subscriptions (active or trialing)
   return allSubs.find(
     (sub) => sub.status === "active" || sub.status === "trialing"
   );
 }
 
-// 1. CREATE CHECKOUT SESSION
+// 1. CREATE CHECKOUT SESSION - NO TRIAL (user already had free trial)
 export const createCheckoutSession = async (
   req: AuthRequest,
   res: Response
@@ -176,7 +142,6 @@ export const createCheckoutSession = async (
       return res.status(404).json({ success: false, error: "User not found" });
     }
 
-    // ✅ Only block users with PAID subscriptions (allow free trial users)
     const existingPaidSubscription = await getPaidSubscription(userId);
     if (existingPaidSubscription) {
       return res.status(400).json({
@@ -185,7 +150,6 @@ export const createCheckoutSession = async (
       });
     }
 
-    // Create or retrieve Stripe customer
     let customerId = user.stripeCustomerId;
     if (!customerId) {
       const customer = await stripe.customers.create({
@@ -201,7 +165,7 @@ export const createCheckoutSession = async (
         .where(eq(users.id, userId));
     }
 
-    // Create checkout session with 7-day trial
+    // ✅ NO TRIAL - User already had 7-day free trial
     const session = await stripe.checkout.sessions.create({
       customer: customerId,
       mode: "subscription",
@@ -213,7 +177,6 @@ export const createCheckoutSession = async (
         },
       ],
       subscription_data: {
-        trial_period_days: STRIPE_CONFIG.trialDays,
         metadata: { userId: user.id.toString() },
       },
       success_url: `${
@@ -224,6 +187,8 @@ export const createCheckoutSession = async (
       }/pricing`,
       metadata: { userId: user.id.toString() },
     });
+
+    console.log(`✅ Checkout session created for user ${userId} - NO TRIAL (already had free trial)`);
 
     res.json({ success: true, url: session.url });
   } catch (error: any) {
@@ -252,7 +217,6 @@ export const getSubscriptionStatus = async (req: Request, res: Response) => {
 
     let subscription = await getLatestSubscription(user.id);
 
-    // Auto-sync if no subscription in DB but user has Stripe customer ID
     if (!subscription && user.stripeCustomerId) {
       console.log(`🔄 No subscription in DB, syncing from Stripe...`);
       subscription = await syncSubscriptionFromStripe(
@@ -261,7 +225,6 @@ export const getSubscriptionStatus = async (req: Request, res: Response) => {
       );
     }
 
-    // ✅ NEW: Check subscription status including free trials
     const now = new Date();
     let hasSubscription = false;
     let trialExpired = false;
@@ -273,13 +236,12 @@ export const getSubscriptionStatus = async (req: Request, res: Response) => {
         currentPeriodEnd: subscription.currentPeriodEnd,
       });
 
-      // Check if it's a free trial
       if (subscription.status === "free_trial") {
         const trialEnd = new Date(
           subscription.trialEnd || subscription.currentPeriodEnd
         );
         trialExpired = now > trialEnd;
-        hasSubscription = !trialExpired; // Has access only if trial hasn't expired
+        hasSubscription = !trialExpired;
 
         console.log(`🆓 Free trial status:`, {
           trialEnd: trialEnd.toISOString(),
@@ -288,7 +250,6 @@ export const getSubscriptionStatus = async (req: Request, res: Response) => {
           hasAccess: hasSubscription,
         });
       } else {
-        // Paid subscription or trialing
         hasSubscription =
           subscription.status === "active" ||
           subscription.status === "trialing";
@@ -306,7 +267,7 @@ export const getSubscriptionStatus = async (req: Request, res: Response) => {
       success: true,
       hasSubscription,
       status: subscription?.status || null,
-      trialExpired, // Tell frontend if trial expired
+      trialExpired,
     });
   } catch (error: any) {
     console.error("❌ Get subscription status error:", error);
@@ -325,10 +286,8 @@ export const getSubscriptionDetails = async (
       return res.status(401).json({ success: false, error: "Unauthorized" });
     }
 
-    // First try to get from database
     let subscription = await getActiveSubscription(userId);
 
-    // If not found, try syncing from Stripe
     if (!subscription) {
       const [user] = await db.select().from(users).where(eq(users.id, userId));
       if (user && user.stripeCustomerId) {
@@ -344,23 +303,16 @@ export const getSubscriptionDetails = async (
       });
     }
 
-    // ✅ Format dates properly for frontend
     const formattedSubscription = {
       ...subscription,
-      // Convert Date objects to ISO strings
-      currentPeriodStart:
-        subscription.currentPeriodStart?.toISOString() || null,
+      currentPeriodStart: subscription.currentPeriodStart?.toISOString() || null,
       currentPeriodEnd: subscription.currentPeriodEnd?.toISOString() || null,
       trialStart: subscription.trialStart?.toISOString() || null,
       trialEnd: subscription.trialEnd?.toISOString() || null,
       canceledAt: subscription.canceledAt?.toISOString() || null,
-      createdAt:
-        subscription.createdAt?.toISOString() || new Date().toISOString(), // ✅ Fallback to now
-      updatedAt:
-        subscription.updatedAt?.toISOString() || new Date().toISOString(), // ✅ Fallback to now
+      createdAt: subscription.createdAt?.toISOString() || new Date().toISOString(),
+      updatedAt: subscription.updatedAt?.toISOString() || new Date().toISOString(),
     };
-
-    console.log("📊 Subscription details:", formattedSubscription); // ✅ Debug log
 
     res.json({
       success: true,
@@ -411,7 +363,7 @@ export const cancelSubscription = async (req: AuthRequest, res: Response) => {
     }
 
     const subscription = await getActiveSubscription(userId);
-    if (!subscription) {
+    if (!subscription || !subscription.stripeSubscriptionId) {
       return res.status(404).json({
         success: false,
         error: "No active subscription found",
@@ -452,7 +404,7 @@ export const reactivateSubscription = async (
     }
 
     const subscription = await getLatestSubscription(userId);
-    if (!subscription || !subscription.cancelAtPeriodEnd) {
+    if (!subscription || !subscription.cancelAtPeriodEnd || !subscription.stripeSubscriptionId) {
       return res.status(400).json({
         success: false,
         error: "Subscription is not scheduled for cancellation",
@@ -495,7 +447,6 @@ export const createSetupIntent = async (req: AuthRequest, res: Response) => {
       return res.status(404).json({ success: false, error: "User not found" });
     }
 
-    // ✅ Only block users with PAID subscriptions (allow free trial users)
     const existingPaidSubscription = await getPaidSubscription(userId);
     if (existingPaidSubscription) {
       return res.status(400).json({
@@ -504,7 +455,6 @@ export const createSetupIntent = async (req: AuthRequest, res: Response) => {
       });
     }
 
-    // Create or retrieve Stripe customer
     let customerId = user.stripeCustomerId;
     if (!customerId) {
       const customer = await stripe.customers.create({
@@ -520,7 +470,6 @@ export const createSetupIntent = async (req: AuthRequest, res: Response) => {
         .where(eq(users.id, userId));
     }
 
-    // Create Setup Intent for saving card
     const setupIntent = await stripe.setupIntents.create({
       customer: customerId,
       payment_method_types: ["card"],
@@ -541,7 +490,7 @@ export const createSetupIntent = async (req: AuthRequest, res: Response) => {
   }
 };
 
-// 8. CONFIRM SUBSCRIPTION AFTER PAYMENT METHOD SAVED
+// 8. CONFIRM SUBSCRIPTION - NO TRIAL (user already had free trial)
 export const confirmSubscription = async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.user?.userId;
@@ -564,10 +513,10 @@ export const confirmSubscription = async (req: AuthRequest, res: Response) => {
         .json({ success: false, error: "Customer not found" });
     }
 
-    console.log(`📝 Confirming subscription for user ${userId}...`);
+    console.log(`📝 Confirming subscription for user ${userId} - NO TRIAL (already had free trial)...`);
 
-    // ✅ Check if user has existing free trial
-    const existingFreeTrial = await db
+    // Check if user has existing free trial
+    const [existingFreeTrial] = await db
       .select()
       .from(subscriptions)
       .where(
@@ -578,22 +527,19 @@ export const confirmSubscription = async (req: AuthRequest, res: Response) => {
       )
       .limit(1);
 
-    // Attach payment method to customer
+    // Attach payment method
     await stripe.paymentMethods.attach(paymentMethodId, {
       customer: user.stripeCustomerId,
     });
 
-    // Set as default payment method
     await stripe.customers.update(user.stripeCustomerId, {
       invoice_settings: {
         default_payment_method: paymentMethodId,
       },
     });
 
-    // ✅ OPTION A: Create subscription WITHOUT additional trial
-    // If user had free trial, bill immediately
-    // If user never had free trial (edge case), give them one trial
-    const subscriptionParams: any = {
+    // ✅ Create subscription WITHOUT trial - bill immediately
+    const subscription = await stripe.subscriptions.create({
       customer: user.stripeCustomerId,
       items: [{ price: STRIPE_CONFIG.priceId }],
       payment_settings: {
@@ -602,117 +548,33 @@ export const confirmSubscription = async (req: AuthRequest, res: Response) => {
       },
       expand: ["latest_invoice.payment_intent"],
       metadata: { userId: user.id.toString() },
-    };
-
-   // ✅ Only add trial if user NEVER had a free trial
-    if (existingFreeTrial.length === 0) {
-      // No prior free trial - give full trial
-      console.log(`ℹ️ User never had free trial, giving one trial period`);
-      subscriptionParams.trial_period_days = STRIPE_CONFIG.trialDays;
-    } else {
-      // User has free trial - calculate remaining days
-      const freeTrial = existingFreeTrial[0];
-      const now = new Date();
-      const trialEnd = new Date(
-        freeTrial.trialEnd || freeTrial.currentPeriodEnd
-      );
-      const remainingMs = trialEnd.getTime() - now.getTime();
-      const remainingDays = Math.ceil(remainingMs / (1000 * 60 * 60 * 24));
-
-      if (remainingDays > 0) {
-        // Still in trial period - honor remaining days
-        console.log(
-          `🎁 User has ${remainingDays} days left of free trial, honoring it`
-        );
-        subscriptionParams.trial_period_days = remainingDays;
-      } else {
-        // Trial expired - bill immediately
-        console.log(`✅ Free trial expired, starting billing immediately`);
-        // No trial_period_days = immediate billing
-      }
-    }
-
-    const subscription = await stripe.subscriptions.create(subscriptionParams);
+    });
 
     const subData = subscription as any;
 
-    // ✅ Handle dates properly based on whether there's a trial
-    // ✅ DEBUG: Log the entire subscription object
-    console.log(
-      "📊 Stripe subscription object:",
-      JSON.stringify(subData, null, 2)
-    );
-
-    // ✅ Extract period dates from subscription items (Stripe nests them here)
-    let periodStart, periodEnd;
-
-    if (subData.status === "trialing") {
-      // User got a trial (edge case - no prior free trial)
-      periodStart = subData.trial_start;
-      periodEnd = subData.trial_end;
-      console.log("🎁 Trial dates:", {
-        trial_start: periodStart,
-        trial_end: periodEnd,
-      });
-    } else {
-      // ✅ FIXED: Get dates from items.data[0] for active subscriptions
-      const firstItem = subData.items?.data?.[0];
-      if (firstItem) {
-        periodStart = firstItem.current_period_start;
-        periodEnd = firstItem.current_period_end;
-        console.log("💳 Current period dates from item:", {
-          current_period_start: periodStart,
-          current_period_end: periodEnd,
-        });
-      } else {
-        // Fallback: try billing_cycle_anchor
-        periodStart = subData.billing_cycle_anchor || subData.created;
-        periodEnd = subData.billing_cycle_anchor;
-        console.log("⚠️ Using fallback dates:", {
-          periodStart,
-          periodEnd,
-        });
-      }
-    }
+    console.log(`✅ Stripe subscription created: ${subscription.id} - Status: ${subscription.status} - Billing immediately`);
 
     const toDate = (ts: any): Date | null => {
       if (!ts) return null;
       const timestamp = Number(ts);
-      if (isNaN(timestamp)) {
-        console.error(`Invalid timestamp: ${ts}`);
-        return null;
-      }
+      if (isNaN(timestamp)) return null;
       return new Date(timestamp * 1000);
     };
 
-    // ✅ Convert dates with validation
-    const currentPeriodStart = toDate(periodStart);
-    const currentPeriodEnd = toDate(periodEnd);
+    const currentPeriodStart = toDate(subData.current_period_start);
+    const currentPeriodEnd = toDate(subData.current_period_end);
 
     if (!currentPeriodStart || !currentPeriodEnd) {
-      console.error("❌ Failed to convert dates:", {
-        periodStart,
-        periodEnd,
-        currentPeriodStart,
-        currentPeriodEnd,
-      });
-
+      console.error("❌ Failed to convert dates");
       return res.status(500).json({
         success: false,
         error: "Failed to process subscription dates",
       });
     }
 
-    console.log("✅ Valid dates:", {
-      currentPeriodStart: currentPeriodStart.toISOString(),
-      currentPeriodEnd: currentPeriodEnd.toISOString(),
-    });
-
-    // ✅ If free trial exists, update it instead of inserting
-    if (existingFreeTrial.length > 0) {
-      console.log(
-        `🔄 Converting free trial to paid subscription for user ${userId}`
-      );
+    // Update or create subscription in database
+    if (existingFreeTrial) {
+      console.log(`🔄 Converting free trial to paid subscription`);
 
       await db
         .update(subscriptions)
@@ -722,16 +584,15 @@ export const confirmSubscription = async (req: AuthRequest, res: Response) => {
           stripePriceId: STRIPE_CONFIG.priceId,
           status: subscription.status as any,
           plan: "pro",
-          currentPeriodStart: currentPeriodStart, // ✅ Use validated variable
-          currentPeriodEnd: currentPeriodEnd, // ✅ Use validated variable
-          trialStart: toDate(subData.trial_start),
-          trialEnd: toDate(subData.trial_end),
+          currentPeriodStart,
+          currentPeriodEnd,
+          trialStart: null,
+          trialEnd: null,
           updatedAt: new Date(),
         })
-        .where(eq(subscriptions.id, existingFreeTrial[0].id));
+        .where(eq(subscriptions.id, existingFreeTrial.id));
     } else {
-      // No free trial, create new subscription
-      console.log(`✨ Creating new subscription for user ${userId}`);
+      console.log(`✨ Creating new paid subscription`);
 
       await db.insert(subscriptions).values({
         userId: user.id,
@@ -740,27 +601,22 @@ export const confirmSubscription = async (req: AuthRequest, res: Response) => {
         stripePriceId: STRIPE_CONFIG.priceId,
         status: subscription.status as any,
         plan: "pro",
-        currentPeriodStart: currentPeriodStart, // ✅ Use validated variable
-        currentPeriodEnd: currentPeriodEnd, // ✅ Use validated variable
+        currentPeriodStart,
+        currentPeriodEnd,
         cancelAtPeriodEnd: false,
-        trialStart: toDate(subData.trial_start),
-        trialEnd: toDate(subData.trial_end),
+        trialStart: null,
+        trialEnd: null,
       });
     }
 
-    console.log(
-      `✅ Subscription ${subscription.id} created/updated for user ${userId}`
-    );
+    console.log(`✅ Subscription ${subscription.id} confirmed for user ${userId}`);
 
     res.json({
       success: true,
       subscription: {
         id: subscription.id,
         status: subscription.status,
-        trialEnd: subData.trial_end
-          ? new Date(subData.trial_end * 1000).toISOString()
-          : null,
-        currentPeriodEnd: new Date(periodEnd * 1000).toISOString(),
+        currentPeriodEnd: currentPeriodEnd.toISOString(),
       },
     });
   } catch (error: any) {

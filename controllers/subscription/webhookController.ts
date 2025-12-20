@@ -5,6 +5,19 @@ import { db } from "../../db/client.ts";
 import { subscriptions } from "../../db/schema.ts";
 import { eq } from "drizzle-orm";
 
+// Helper function to safely convert timestamp to Date
+function safeTimestampToDate(timestamp: any): Date | null {
+  if (!timestamp) return null;
+  
+  const ts = Number(timestamp);
+  if (isNaN(ts) || ts <= 0) return null;
+  
+  const date = new Date(ts * 1000);
+  if (isNaN(date.getTime())) return null;
+  
+  return date;
+}
+
 export const handleStripeWebhook = async (req: Request, res: Response) => {
   const sig = req.headers["stripe-signature"];
 
@@ -46,7 +59,6 @@ export const handleStripeWebhook = async (req: Request, res: Response) => {
           );
           const subData = stripeSubscription as any;
 
-          // ✅ For trialing subscriptions, use trial dates as period
           const periodStart =
             subData.status === "trialing" && subData.trial_start
               ? subData.trial_start
@@ -62,6 +74,14 @@ export const handleStripeWebhook = async (req: Request, res: Response) => {
             break;
           }
 
+          const periodStartDate = safeTimestampToDate(periodStart);
+          const periodEndDate = safeTimestampToDate(periodEnd);
+
+          if (!periodStartDate || !periodEndDate) {
+            console.error("❌ Invalid period dates");
+            break;
+          }
+
           await db.insert(subscriptions).values({
             userId: parseInt(userId, 10),
             stripeSubscriptionId: stripeSubscription.id,
@@ -72,15 +92,11 @@ export const handleStripeWebhook = async (req: Request, res: Response) => {
             stripePriceId: stripeSubscription.items.data[0].price.id,
             status: stripeSubscription.status as any,
             plan: "pro",
-            currentPeriodStart: new Date(periodStart * 1000),
-            currentPeriodEnd: new Date(periodEnd * 1000),
+            currentPeriodStart: periodStartDate,
+            currentPeriodEnd: periodEndDate,
             cancelAtPeriodEnd: subData.cancel_at_period_end || false,
-            trialStart: subData.trial_start
-              ? new Date(subData.trial_start * 1000)
-              : null,
-            trialEnd: subData.trial_end
-              ? new Date(subData.trial_end * 1000)
-              : null,
+            trialStart: safeTimestampToDate(subData.trial_start),
+            trialEnd: safeTimestampToDate(subData.trial_end),
           });
 
           console.log(`✅ Subscription created for user ${userId}`);
@@ -91,40 +107,68 @@ export const handleStripeWebhook = async (req: Request, res: Response) => {
       // SUBSCRIPTION UPDATED
       case "customer.subscription.updated": {
         const stripeSubscription = event.data.object as Stripe.Subscription;
+        const subData = stripeSubscription as any;
+
+        console.log(`📝 Updating subscription: ${stripeSubscription.id}`);
+        console.log(`   Status: ${stripeSubscription.status}`);
+        console.log(`   Cancel at period end: ${subData.cancel_at_period_end}`);
 
         const [existingSubscription] = await db
           .select()
           .from(subscriptions)
           .where(eq(subscriptions.stripeSubscriptionId, stripeSubscription.id));
 
-        if (existingSubscription) {
-          await db
-            .update(subscriptions)
-            .set({
-              status: stripeSubscription.status as any,
-              // ✅ Access properties with type assertion
-              currentPeriodStart: new Date(
-                (stripeSubscription as any).current_period_start * 1000
-              ),
-              currentPeriodEnd: new Date(
-                (stripeSubscription as any).current_period_end * 1000
-              ),
-              cancelAtPeriodEnd:
-                (stripeSubscription as any).cancel_at_period_end || false,
-              canceledAt: (stripeSubscription as any).canceled_at
-                ? new Date((stripeSubscription as any).canceled_at * 1000)
-                : null,
-              trialEnd: (stripeSubscription as any).trial_end
-                ? new Date((stripeSubscription as any).trial_end * 1000)
-                : null,
-              updatedAt: new Date(),
-            })
-            .where(eq(subscriptions.id, existingSubscription.id));
-
-          console.log(
-            `✅ Subscription updated: ${stripeSubscription.id} → ${stripeSubscription.status}`
-          );
+        if (!existingSubscription) {
+          console.log(`⚠️ Subscription ${stripeSubscription.id} not found in database`);
+          break;
         }
+
+        // ✅ Build update object with validated dates
+        const updateData: any = {
+          status: stripeSubscription.status as any,
+          updatedAt: new Date(),
+        };
+
+        // Validate and set period dates
+        const periodStart = safeTimestampToDate(subData.current_period_start);
+        const periodEnd = safeTimestampToDate(subData.current_period_end);
+
+        if (periodStart) {
+          updateData.currentPeriodStart = periodStart;
+        }
+
+        if (periodEnd) {
+          updateData.currentPeriodEnd = periodEnd;
+        }
+
+        // Set cancellation fields
+        if (subData.cancel_at_period_end !== undefined) {
+          updateData.cancelAtPeriodEnd = Boolean(subData.cancel_at_period_end);
+        }
+
+        // ✅ Only set canceledAt if it's a valid timestamp
+        const canceledAt = safeTimestampToDate(subData.canceled_at);
+        if (canceledAt) {
+          updateData.canceledAt = canceledAt;
+        } else if (subData.canceled_at === null) {
+          // Explicitly set to null if Stripe sent null
+          updateData.canceledAt = null;
+        }
+
+        // Handle trial dates
+        const trialEnd = safeTimestampToDate(subData.trial_end);
+        if (trialEnd) {
+          updateData.trialEnd = trialEnd;
+        }
+
+        console.log(`   Updating fields: ${Object.keys(updateData).join(', ')}`);
+
+        await db
+          .update(subscriptions)
+          .set(updateData)
+          .where(eq(subscriptions.id, existingSubscription.id));
+
+        console.log(`✅ Subscription updated: ${stripeSubscription.id}`);
         break;
       }
 
@@ -155,8 +199,6 @@ export const handleStripeWebhook = async (req: Request, res: Response) => {
       // PAYMENT SUCCEEDED
       case "invoice.payment_succeeded": {
         const invoice = event.data.object as Stripe.Invoice;
-
-        // ✅ Type assertion to access subscription property
         const subscriptionId = (invoice as any).subscription;
 
         if (subscriptionId && typeof subscriptionId === "string") {
@@ -186,8 +228,6 @@ export const handleStripeWebhook = async (req: Request, res: Response) => {
       // PAYMENT FAILED
       case "invoice.payment_failed": {
         const invoice = event.data.object as Stripe.Invoice;
-
-        // ✅ Type assertion to access subscription property
         const subscriptionId = (invoice as any).subscription;
 
         if (subscriptionId && typeof subscriptionId === "string") {
@@ -217,7 +257,11 @@ export const handleStripeWebhook = async (req: Request, res: Response) => {
 
     res.json({ received: true });
   } catch (error: any) {
-    console.error("❌ Webhook handler error:", error);
-    res.status(500).send("Webhook handler failed");
+    console.error("❌ Webhook handler error:", error.message);
+    console.error("   Event type:", event?.type);
+    console.error("   Stack:", error.stack);
+    
+    // Still return 200 to prevent Stripe retries
+    res.status(500).json({ error: error.message });
   }
 };
