@@ -200,6 +200,12 @@ export const handleStripeWebhook = async (req: Request, res: Response) => {
           }
 
           if (existingFreeTrial) {
+            // ✅ Check if it's a lifetime account first
+            if (existingFreeTrial.isLifetime) {
+              console.log(`⏭️ Ignoring subscription creation for lifetime user ${userId}`);
+              break;
+            }
+
             // Update existing free trial record
             console.log(
               `🔄 Converting free trial to paid subscription (webhook)`
@@ -288,6 +294,12 @@ export const handleStripeWebhook = async (req: Request, res: Response) => {
           break;
         }
 
+        // ✅ CRITICAL: Skip updates for lifetime users
+        if (existingSubscription.isLifetime) {
+          console.log(`⏭️ Ignoring webhook for lifetime user ${existingSubscription.userId} - subscription ${stripeSubscription.id}`);
+          break;
+        }
+
         // ✅ Build update object with validated dates
         const updateData: any = {
           status: stripeSubscription.status as any,
@@ -366,6 +378,12 @@ export const handleStripeWebhook = async (req: Request, res: Response) => {
           .where(eq(subscriptions.stripeSubscriptionId, stripeSubscription.id));
 
         if (existingSubscription) {
+          // ✅ CRITICAL: Skip updates for lifetime users
+          if (existingSubscription.isLifetime) {
+            console.log(`⏭️ Ignoring deletion webhook for lifetime user ${existingSubscription.userId} - subscription ${stripeSubscription.id}`);
+            break;
+          }
+
           await db
             .update(subscriptions)
             .set({
@@ -391,19 +409,24 @@ export const handleStripeWebhook = async (req: Request, res: Response) => {
             .from(subscriptions)
             .where(eq(subscriptions.stripeSubscriptionId, subscriptionId));
 
-          if (
-            existingSubscription &&
-            existingSubscription.status === "past_due"
-          ) {
-            await db
-              .update(subscriptions)
-              .set({
-                status: "active",
-                updatedAt: new Date(),
-              })
-              .where(eq(subscriptions.id, existingSubscription.id));
+          if (existingSubscription) {
+            // ✅ Skip for lifetime users
+            if (existingSubscription.isLifetime) {
+              console.log(`⏭️ Ignoring payment webhook for lifetime user ${existingSubscription.userId}`);
+              break;
+            }
 
-            console.log(`✅ Payment succeeded: ${subscriptionId}`);
+            if (existingSubscription.status === "past_due") {
+              await db
+                .update(subscriptions)
+                .set({
+                  status: "active",
+                  updatedAt: new Date(),
+                })
+                .where(eq(subscriptions.id, existingSubscription.id));
+
+              console.log(`✅ Payment succeeded: ${subscriptionId}`);
+            }
           }
         }
         break;
@@ -421,6 +444,12 @@ export const handleStripeWebhook = async (req: Request, res: Response) => {
             .where(eq(subscriptions.stripeSubscriptionId, subscriptionId));
 
           if (existingSubscription) {
+            // ✅ Skip for lifetime users
+            if (existingSubscription.isLifetime) {
+              console.log(`⏭️ Ignoring payment failure webhook for lifetime user ${existingSubscription.userId}`);
+              break;
+            }
+
             await db
               .update(subscriptions)
               .set({

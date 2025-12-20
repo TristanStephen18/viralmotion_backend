@@ -11,6 +11,21 @@ interface AuthRequest extends Request {
   };
 }
 
+async function hasLifetimeAccess(userId: number): Promise<boolean> {
+  const [subscription] = await db
+    .select()
+    .from(subscriptions)
+    .where(
+      and(
+        eq(subscriptions.userId, userId),
+        eq(subscriptions.isLifetime, true)
+      )
+    )
+    .limit(1);
+
+  return !!subscription;
+}
+
 async function syncSubscriptionFromStripe(
   userId: number,
   stripeCustomerId: string
@@ -95,7 +110,9 @@ async function getActiveSubscription(userId: number) {
     (sub) =>
       sub.status === "active" ||
       sub.status === "trialing" ||
-      sub.status === "free_trial"
+      sub.status === "free_trial" ||
+      sub.status === "lifetime" ||
+      sub.status === "company"
   );
 }
 
@@ -217,6 +234,18 @@ export const getSubscriptionStatus = async (req: Request, res: Response) => {
       return res.status(404).json({ success: false, error: "User not found" });
     }
 
+    // ✅ Check lifetime access FIRST
+    const isLifetime = await hasLifetimeAccess(user.id);
+    if (isLifetime) {
+      return res.json({
+        success: true,
+        hasSubscription: true,
+        status: "lifetime",
+        trialExpired: false,
+        isLifetime: true,
+      });
+    }
+
     let subscription = await getLatestSubscription(user.id);
 
     if (!subscription && user.stripeCustomerId) {
@@ -270,6 +299,7 @@ export const getSubscriptionStatus = async (req: Request, res: Response) => {
       hasSubscription,
       status: subscription?.status || null,
       trialExpired,
+      isLifetime: false,
     });
   } catch (error: any) {
     console.error("❌ Get subscription status error:", error);
@@ -317,6 +347,11 @@ export const getSubscriptionDetails = async (
         subscription.createdAt?.toISOString() || new Date().toISOString(),
       updatedAt:
         subscription.updatedAt?.toISOString() || new Date().toISOString(),
+      // ✅ Include lifetime fields
+      isLifetime: subscription.isLifetime || false,
+      isCompanyAccount: subscription.isCompanyAccount || false,
+      companyName: subscription.companyName || null,
+      specialNotes: subscription.specialNotes || null,
     };
 
     res.json({

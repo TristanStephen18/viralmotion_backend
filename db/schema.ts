@@ -278,7 +278,10 @@ export const adminUsers = pgTable(
     email: text("email").notNull().unique(),
     passwordHash: text("password_hash").notNull(),
     name: text("name").notNull(),
-    role: text("role").$type<"super_admin" | "admin" | "viewer">().default("admin").notNull(),
+    role: text("role")
+      .$type<"super_admin" | "admin" | "viewer">()
+      .default("admin")
+      .notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     lastLogin: timestamp("last_login"),
     active: boolean("active").default(true).notNull(),

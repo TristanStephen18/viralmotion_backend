@@ -45,7 +45,7 @@ export const getUsers = async (req: Request, res: Response) => {
       .from(users)
       .leftJoin(
         subscriptions,
-        sql`${users.id} = ${subscriptions.userId} AND ${subscriptions.status} IN ('active', 'trialing', 'free_trial')`
+        sql`${users.id} = ${subscriptions.userId} AND ${subscriptions.status} IN ('active', 'trialing', 'free_trial', 'lifetime', 'company')`
       );
 
     // Build WHERE conditions
@@ -69,6 +69,10 @@ export const getUsers = async (req: Request, res: Response) => {
         conditions.push(sql`${subscriptions.status} IN ('active', 'trialing')`);
       } else if (subscriptionFilter === "free_trial") {
         conditions.push(eq(subscriptions.status, "free_trial"));
+      } else if (subscriptionFilter === "lifetime") {
+        conditions.push(eq(subscriptions.status, "lifetime"));
+      } else if (subscriptionFilter === "company") {
+        conditions.push(eq(subscriptions.status, "company"));
       } else {
         conditions.push(eq(subscriptions.status, subscriptionFilter));
       }
@@ -126,7 +130,7 @@ export const getUsers = async (req: Request, res: Response) => {
       .from(users)
       .leftJoin(
         subscriptions,
-        sql`${users.id} = ${subscriptions.userId} AND ${subscriptions.status} IN ('active', 'trialing', 'free_trial')`
+        sql`${users.id} = ${subscriptions.userId} AND ${subscriptions.status} IN ('active', 'trialing', 'free_trial', 'lifetime', 'company')`
       );
 
     if (conditions.length > 0) {
@@ -151,7 +155,7 @@ export const getUsers = async (req: Request, res: Response) => {
   }
 };
 
-// Get user details - no changes needed
+// Get user details
 export const getUserDetails = async (req: Request, res: Response) => {
   try {
     const userId = parseInt(req.params.userId);
@@ -259,6 +263,101 @@ export const getUserDetails = async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error("Get user details error:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// ✅ NEW: Create lifetime account directly
+export const createLifetimeAccount = async (req: Request, res: Response) => {
+  try {
+    const { email, name, companyName, notes } = req.body;
+    const adminId = (req as any).admin?.id;
+
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        error: "Email is required",
+      });
+    }
+
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({
+        success: false,
+        error: "Invalid email format",
+      });
+    }
+
+    // Check if email already exists
+    const [existing] = await db
+      .select()
+      .from(users)
+      .where(eq(users.email, email.toLowerCase().trim()))
+      .limit(1);
+
+    if (existing) {
+      return res.status(400).json({
+        success: false,
+        error: "User with this email already exists",
+      });
+    }
+
+    console.log(`👤 Creating lifetime account for ${email}`);
+
+    // Create user
+    const [newUser] = await db
+      .insert(users)
+      .values({
+        email: email.toLowerCase().trim(),
+        name: name?.trim() || null,
+        passwordHash: null, // No password initially - user can set via "Forgot Password"
+        verified: true, // Auto-verify
+        provider: "admin_created",
+        createdAt: new Date(),
+      })
+      .returning();
+
+    console.log(`✅ User created: ${newUser.id}`);
+
+    // Create lifetime subscription
+    await db.insert(subscriptions).values({
+      userId: newUser.id,
+      stripeSubscriptionId: null,
+      stripeCustomerId: null,
+      stripePriceId: null,
+      status: companyName ? "company" : "lifetime",
+      plan: companyName ? "company" : "lifetime",
+      isLifetime: true,
+      isCompanyAccount: !!companyName,
+      companyName: companyName?.trim() || null,
+      specialNotes: notes?.trim() || null,
+      grantedBy: adminId,
+      currentPeriodStart: new Date(),
+      currentPeriodEnd: new Date("2099-12-31"), // Never expires
+      cancelAtPeriodEnd: false,
+      trialStart: null,
+      trialEnd: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    console.log(`✅ Lifetime subscription created for user ${newUser.id}`);
+    console.log(`   Type: ${companyName ? 'Company' : 'Personal'}`);
+    console.log(`   Company: ${companyName || 'N/A'}`);
+    console.log(`   Notes: ${notes || 'N/A'}`);
+
+    res.json({
+      success: true,
+      user: {
+        id: newUser.id,
+        email: newUser.email,
+        name: newUser.name,
+      },
+      message: `Lifetime account created successfully. User can set password via "Forgot Password" using email: ${newUser.email}`,
+    });
+  } catch (error: any) {
+    console.error("❌ Create lifetime account error:", error);
     res.status(500).json({ success: false, error: error.message });
   }
 };
