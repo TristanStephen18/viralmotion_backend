@@ -13,6 +13,7 @@ import {
   getUsers,
   getUserDetails,
   createLifetimeAccount,
+  deleteUser,
 } from "../controllers/admin/userManagementController.ts";
 import {
   grantLifetimeAccess,
@@ -49,6 +50,9 @@ router.get("/users/:userId", verifyAdminToken, getUserDetails);
 
 // Create lifetime account directly
 router.post("/users/create-lifetime", verifyAdminToken, createLifetimeAccount);
+
+// ✅ NEW: Delete user
+router.delete("/users/:userId", verifyAdminToken, deleteUser);
 
 // Grant/revoke lifetime access to existing users
 router.post("/subscriptions/grant-lifetime", verifyAdminToken, grantLifetimeAccess);

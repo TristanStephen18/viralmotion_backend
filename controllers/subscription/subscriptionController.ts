@@ -2,7 +2,7 @@ import type { Request, Response } from "express";
 import { stripe, STRIPE_CONFIG } from "../../config/stripe.ts";
 import { db } from "../../db/client.ts";
 import { users, subscriptions } from "../../db/schema.ts";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, sql } from "drizzle-orm";
 
 interface AuthRequest extends Request {
   user?: {
@@ -18,7 +18,9 @@ async function hasLifetimeAccess(userId: number): Promise<boolean> {
     .where(
       and(
         eq(subscriptions.userId, userId),
-        eq(subscriptions.isLifetime, true)
+        eq(subscriptions.isLifetime, true),
+        // ✅ CRITICAL: Also check that status is NOT canceled
+        sql`${subscriptions.status} IN ('lifetime', 'company')` // Only these statuses count as active lifetime
       )
     )
     .limit(1);
@@ -106,14 +108,18 @@ async function getActiveSubscription(userId: number) {
     .where(eq(subscriptions.userId, userId))
     .orderBy(desc(subscriptions.createdAt));
 
-  return allSubs.find(
-    (sub) =>
+  return allSubs.find((sub) => {
+    // ✅ For lifetime/company, also check isLifetime flag
+    if (sub.status === "lifetime" || sub.status === "company") {
+      return sub.isLifetime === true; // Must have isLifetime flag
+    }
+    // For other statuses, check normally
+    return (
       sub.status === "active" ||
       sub.status === "trialing" ||
-      sub.status === "free_trial" ||
-      sub.status === "lifetime" ||
-      sub.status === "company"
-  );
+      sub.status === "free_trial"
+    );
+  });
 }
 
 async function getLatestSubscription(userId: number) {
@@ -234,9 +240,15 @@ export const getSubscriptionStatus = async (req: Request, res: Response) => {
       return res.status(404).json({ success: false, error: "User not found" });
     }
 
+    console.log(`📊 Checking subscription status for user ${user.id} (${user.email})`);
+
     // ✅ Check lifetime access FIRST
     const isLifetime = await hasLifetimeAccess(user.id);
+    
+    console.log(`   - isLifetime: ${isLifetime}`);
+    
     if (isLifetime) {
+      console.log(`✅ User ${user.id} has lifetime access`);
       return res.json({
         success: true,
         hasSubscription: true,
