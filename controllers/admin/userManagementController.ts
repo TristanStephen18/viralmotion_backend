@@ -1,11 +1,31 @@
 import type { Request, Response } from "express";
 import { db } from "../../db/client.ts";
-import { users, subscriptions, projects,
+import {
+  users,
+  subscriptions,
+  projects,
   renders,
   pageVisits,
   veo3Generations,
-  imageGenerations, } from "../../db/schema.ts";
-import { eq, sql, desc, asc, ilike, or, and, gte, lte, count } from "drizzle-orm";
+  imageGenerations,
+  youtubeDownloads,
+  loginAttempts,
+  uploads,
+  datasets,
+} from "../../db/schema.ts";
+import { stripe } from "../../config/stripe.ts";
+import {
+  eq,
+  sql,
+  desc,
+  asc,
+  ilike,
+  or,
+  and,
+  gte,
+  lte,
+  count,
+} from "drizzle-orm";
 
 // Get all users with pagination, search, filters, and sorting
 export const getUsers = async (req: Request, res: Response) => {
@@ -54,10 +74,7 @@ export const getUsers = async (req: Request, res: Response) => {
     // Search filter
     if (search) {
       conditions.push(
-        or(
-          ilike(users.email, `%${search}%`),
-          ilike(users.name, `%${search}%`)
-        )
+        or(ilike(users.email, `%${search}%`), ilike(users.name, `%${search}%`))
       );
     }
 
@@ -112,7 +129,7 @@ export const getUsers = async (req: Request, res: Response) => {
 
     // ✅ NEW: Apply sorting
     const orderFunction = sortOrder === "asc" ? asc : desc;
-    
+
     if (sortBy === "name") {
       query = query.orderBy(orderFunction(users.name)) as any;
     } else if (sortBy === "email") {
@@ -161,10 +178,7 @@ export const getUserDetails = async (req: Request, res: Response) => {
     const userId = parseInt(req.params.userId);
 
     // Get user basic info
-    const [user] = await db
-      .select()
-      .from(users)
-      .where(eq(users.id, userId));
+    const [user] = await db.select().from(users).where(eq(users.id, userId));
 
     if (!user) {
       return res.status(404).json({
@@ -343,9 +357,9 @@ export const createLifetimeAccount = async (req: Request, res: Response) => {
     });
 
     console.log(`✅ Lifetime subscription created for user ${newUser.id}`);
-    console.log(`   Type: ${companyName ? 'Company' : 'Personal'}`);
-    console.log(`   Company: ${companyName || 'N/A'}`);
-    console.log(`   Notes: ${notes || 'N/A'}`);
+    console.log(`   Type: ${companyName ? "Company" : "Personal"}`);
+    console.log(`   Company: ${companyName || "N/A"}`);
+    console.log(`   Notes: ${notes || "N/A"}`);
 
     res.json({
       success: true,
@@ -358,6 +372,90 @@ export const createLifetimeAccount = async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error("❌ Create lifetime account error:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// ✅ NEW: Delete user (admin only)
+export const deleteUser = async (req: Request, res: Response) => {
+  try {
+    const { userId } = req.params;
+    const adminId = (req as any).admin?.id;
+
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        error: "User ID is required",
+      });
+    }
+
+    const userIdNum = parseInt(userId, 10);
+
+    console.log(`🗑️ Admin ${adminId} is deleting user ${userIdNum}`);
+
+    // 1. Get user details before deletion
+    const [user] = await db.select().from(users).where(eq(users.id, userIdNum));
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: "User not found",
+      });
+    }
+
+    // 2. Cancel Stripe subscription if exists
+    const [subscription] = await db
+      .select()
+      .from(subscriptions)
+      .where(eq(subscriptions.userId, userIdNum))
+      .limit(1);
+
+    if (subscription?.stripeSubscriptionId) {
+      try {
+        await stripe.subscriptions.cancel(subscription.stripeSubscriptionId);
+        console.log(
+          `✅ Canceled Stripe subscription: ${subscription.stripeSubscriptionId}`
+        );
+      } catch (stripeError) {
+        console.error("⚠️ Failed to cancel Stripe subscription:", stripeError);
+        // Continue with deletion even if Stripe cancellation fails
+      }
+    }
+
+    // 3. Delete all user data (tables WITHOUT cascade delete)
+    await db.delete(projects).where(eq(projects.userId, userIdNum));
+    await db.delete(renders).where(eq(renders.userId, userIdNum));
+    await db.delete(uploads).where(eq(uploads.userId, userIdNum));
+    await db.delete(datasets).where(eq(datasets.userId, userIdNum));
+    await db
+      .delete(veo3Generations)
+      .where(eq(veo3Generations.userId, userIdNum));
+    await db
+      .delete(imageGenerations)
+      .where(eq(imageGenerations.userId, userIdNum));
+    await db
+      .delete(youtubeDownloads)
+      .where(eq(youtubeDownloads.userId, userIdNum));
+    await db.delete(loginAttempts).where(eq(loginAttempts.email, user.email));
+    await db.delete(pageVisits).where(eq(pageVisits.userId, userIdNum));
+
+    console.log(`✅ Deleted all user data for user ${userIdNum}`);
+
+    // Note: refreshTokens and subscriptions have onDelete: "cascade" so they'll auto-delete
+
+    // 4. Delete user (this will cascade delete refreshTokens and subscriptions)
+    await db.delete(users).where(eq(users.id, userIdNum));
+
+    console.log(
+      `✅ User account deleted: ${user.email} (ID: ${userIdNum}) by admin ${adminId}`
+    );
+
+    res.json({
+      success: true,
+      message: `User ${user.email} deleted successfully`,
+    });
+  } catch (error: any) {
+    console.error("❌ Admin delete user error:", error);
     res.status(500).json({ success: false, error: error.message });
   }
 };

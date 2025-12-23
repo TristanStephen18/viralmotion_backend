@@ -108,6 +108,7 @@ export const grantLifetimeAccess = async (req: AuthRequest, res: Response) => {
 };
 
 // Revoke lifetime access from a user
+// Revoke lifetime access from a user
 export const revokeLifetimeAccess = async (req: AuthRequest, res: Response) => {
   try {
     const { userId } = req.body;
@@ -139,11 +140,13 @@ export const revokeLifetimeAccess = async (req: AuthRequest, res: Response) => {
       });
     }
 
-    // Cancel the lifetime subscription
+    // ✅ CRITICAL FIX: Set isLifetime to false AND mark as canceled
     await db
       .update(subscriptions)
       .set({
         status: "canceled",
+        isLifetime: false, // ✅ This is critical!
+        isCompanyAccount: false, // ✅ Also reset this
         canceledAt: new Date(),
         updatedAt: new Date(),
       })
