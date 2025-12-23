@@ -328,6 +328,7 @@ export const analyticsEvents = pgTable(
   })
 );
 
+// Admin Audit Logs (for security and compliance)
 export const adminAuditLogs = pgTable(
   "admin_audit_logs",
   {
@@ -357,3 +358,5 @@ export const adminAuditLogs = pgTable(
     statusIdx: index("admin_audit_logs_status_idx").on(table.status),
   })
 );
+
+
