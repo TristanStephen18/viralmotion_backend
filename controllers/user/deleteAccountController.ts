@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { db } from "../../db/client";
+import { db } from "../../db/client.ts";
 import {
   users,
   projects,
@@ -12,7 +12,7 @@ import {
   loginAttempts,
   blacklistedTokens,
   subscriptions,
-} from "../../db/schema";
+} from "../../db/schema.ts";
 import { eq } from "drizzle-orm";
 import bcrypt from "bcrypt";
 import Stripe from "stripe";

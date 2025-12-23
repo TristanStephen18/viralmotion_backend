@@ -327,3 +327,36 @@ export const analyticsEvents = pgTable(
     createdAtIdx: index("analytics_events_created_at_idx").on(table.createdAt),
   })
 );
+
+// Admin Audit Logs (for security and compliance)
+export const adminAuditLogs = pgTable(
+  "admin_audit_logs",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    adminId: integer("admin_id")
+      .references(() => adminUsers.id, { onDelete: "cascade" })
+      .notNull(),
+    action: varchar("action", { length: 255 }).notNull(), // e.g., "DELETE_USER", "GRANT_LIFETIME"
+    targetType: varchar("target_type", { length: 100 }), // e.g., "USER", "SUBSCRIPTION"
+    targetId: integer("target_id"), // ID of affected resource
+    targetEmail: text("target_email"), // Email of affected user (for easier searching)
+    details: jsonb("details"), // Additional context (sanitized)
+    ipAddress: varchar("ip_address", { length: 45 }), // IPv4/IPv6
+    userAgent: text("user_agent"),
+    status: varchar("status", { length: 50 })
+      .$type<"SUCCESS" | "FAILED">()
+      .notNull(),
+    errorMessage: text("error_message"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    adminIdIdx: index("admin_audit_logs_admin_id_idx").on(table.adminId),
+    actionIdx: index("admin_audit_logs_action_idx").on(table.action),
+    targetTypeIdx: index("admin_audit_logs_target_type_idx").on(table.targetType),
+    targetIdIdx: index("admin_audit_logs_target_id_idx").on(table.targetId),
+    createdAtIdx: index("admin_audit_logs_created_at_idx").on(table.createdAt),
+    statusIdx: index("admin_audit_logs_status_idx").on(table.status),
+  })
+);
+
+

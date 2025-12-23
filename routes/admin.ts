@@ -1,8 +1,11 @@
 import { Router } from "express";
-import { verifyAdminToken, requireRole } from "../middleware/adminAuth.ts";
+import { verifyAdminToken, requireReAuth } from "../middleware/adminAuth.ts";
 import {
   adminLogin,
   createFirstAdmin,
+  adminLogout,
+  generateReAuthToken,
+  createAdminUser,
 } from "../controllers/admin/authController.ts";
 import {
   getDashboardStats,
@@ -20,45 +23,153 @@ import {
   revokeLifetimeAccess,
   getLifetimeAccounts,
 } from "../controllers/admin/subscriptionManagement.ts";
+import {
+  getAuditLogs,
+  getAuditStats,
+} from "../controllers/admin/auditController.ts";
+import {
+  adminLoginRateLimiter,
+  adminOperationsRateLimiter,
+  adminCriticalRateLimiter,
+  adminDataAccessRateLimiter,
+  adminSpeedLimiter,
+} from "../middleware/adminRateLimiter.ts";
+import {
+  validateUserId,
+  validateGrantLifetime,
+  validateCreateLifetimeAccount,
+  validateUserListQuery,
+} from "../middleware/adminValidator.ts";
 
 const router = Router();
 
 // ========== PUBLIC ROUTES (NO AUTH) ==========
 
-// Admin login
-router.post("/auth/login", adminLogin);
+// ✅ Admin login (VERY strict rate limiting)
+router.post("/auth/login", adminLoginRateLimiter, adminLogin);
 
-// Create first admin (one-time setup)
+// ✅ Create first admin (one-time setup)
 router.post("/auth/setup", createFirstAdmin);
 
-// Track page visit (can be called by frontend without admin auth)
+// ✅ Track page visit (public)
 router.post("/analytics/track-visit", trackPageVisit);
 
-// ========== PROTECTED ROUTES (ADMIN AUTH REQUIRED) ==========
+// ========== PROTECTED ROUTES (REQUIRE AUTH) ==========
 
-// Dashboard stats
-router.get("/analytics/stats", verifyAdminToken, getDashboardStats);
+// Apply speed limiter to ALL protected routes
+router.use(verifyAdminToken);
+router.use(adminSpeedLimiter);
 
-// Visit analytics
-router.get("/analytics/visits", verifyAdminToken, getVisitAnalytics);
+// ========== AUTHENTICATION ROUTES ==========
 
-// User management
-router.get("/users", verifyAdminToken, getUsers);
-router.get("/users/:userId", verifyAdminToken, getUserDetails);
+// ✅ Logout (blacklist token)
+router.post("/auth/logout", adminLogout);
 
-// ========== LIFETIME ACCESS MANAGEMENT (ANY ADMIN) ==========
+// ✅ Generate re-auth token for critical operations
+router.post("/auth/reauth", adminOperationsRateLimiter, generateReAuthToken);
 
-// Create lifetime account directly
-router.post("/users/create-lifetime", verifyAdminToken, createLifetimeAccount);
+// ========== ANALYTICS ROUTES ==========
 
-// ✅ NEW: Delete user
-router.delete("/users/:userId", verifyAdminToken, deleteUser);
+// ✅ Dashboard stats
+router.get(
+  "/analytics/stats",
+  adminOperationsRateLimiter,
+  getDashboardStats
+);
 
-// Grant/revoke lifetime access to existing users
-router.post("/subscriptions/grant-lifetime", verifyAdminToken, grantLifetimeAccess);
-router.post("/subscriptions/revoke-lifetime", verifyAdminToken, revokeLifetimeAccess);
+// ✅ Visit analytics
+router.get(
+  "/analytics/visits",
+  adminOperationsRateLimiter,
+  getVisitAnalytics
+);
 
-// Get all lifetime accounts
-router.get("/subscriptions/lifetime", verifyAdminToken, getLifetimeAccounts);
+// ========== USER MANAGEMENT ROUTES ==========
+
+// ✅ Get users list (with rate limiting)
+router.get(
+  "/users",
+  adminDataAccessRateLimiter,
+  validateUserListQuery,
+  getUsers
+);
+
+// ✅ Get user details (with rate limiting)
+router.get(
+  "/users/:userId",
+  adminDataAccessRateLimiter,
+  validateUserId,
+  getUserDetails
+);
+
+// ✅ Create lifetime account (CRITICAL - requires re-auth)
+router.post(
+  "/users/create-lifetime",
+  adminCriticalRateLimiter,
+  validateCreateLifetimeAccount,
+  requireReAuth(),
+  createLifetimeAccount
+);
+
+// ✅ Delete user (CRITICAL - requires re-auth)
+router.delete(
+  "/users/:userId",
+  adminCriticalRateLimiter,
+  validateUserId,
+  requireReAuth(),
+  deleteUser
+);
+
+// ========== SUBSCRIPTION MANAGEMENT ROUTES ==========
+
+// ✅ Grant lifetime access (CRITICAL - requires re-auth)
+router.post(
+  "/subscriptions/grant-lifetime",
+  adminCriticalRateLimiter,
+  validateUserId,
+  validateGrantLifetime,
+  requireReAuth(),
+  grantLifetimeAccess
+);
+
+// ✅ Revoke lifetime access (CRITICAL - requires re-auth)
+router.post(
+  "/subscriptions/revoke-lifetime",
+  adminCriticalRateLimiter,
+  validateUserId,
+  requireReAuth(),
+  revokeLifetimeAccess
+);
+
+// Create additional admin user (CRITICAL - requires re-auth)
+router.post(
+  "/auth/create-admin",
+  adminCriticalRateLimiter,
+  requireReAuth(),
+  createAdminUser
+);
+
+// ✅ Get lifetime accounts
+router.get(
+  "/subscriptions/lifetime",
+  adminOperationsRateLimiter,
+  getLifetimeAccounts
+);
+
+// ========== AUDIT ROUTES ==========
+
+// ✅ Get audit logs
+router.get(
+  "/audit/logs",
+  adminOperationsRateLimiter,
+  getAuditLogs
+);
+
+// ✅ Get audit statistics
+router.get(
+  "/audit/stats",
+  adminOperationsRateLimiter,
+  getAuditStats
+);
 
 export default router;

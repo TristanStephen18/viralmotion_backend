@@ -26,6 +26,7 @@ import {
   lte,
   count,
 } from "drizzle-orm";
+import { logAdminAction, ADMIN_ACTIONS } from "../../utils/auditLogger.ts";
 
 // Get all users with pagination, search, filters, and sorting
 export const getUsers = async (req: Request, res: Response) => {
@@ -172,8 +173,10 @@ export const getUsers = async (req: Request, res: Response) => {
   }
 };
 
-// Get user details
+// ✅ UPDATED: getUserDetails with audit logging
 export const getUserDetails = async (req: Request, res: Response) => {
+  const adminId = (req as any).admin?.adminId;
+
   try {
     const userId = parseInt(req.params.userId);
 
@@ -258,6 +261,16 @@ export const getUserDetails = async (req: Request, res: Response) => {
       .orderBy(desc(pageVisits.visitedAt))
       .limit(10);
 
+      // ✅ Log user data access
+    await logAdminAction(req, {
+      adminId,
+      action: ADMIN_ACTIONS.VIEW_USER_DETAILS,
+      targetType: "USER",
+      targetId: userId,
+      targetEmail: user.email,
+      status: "SUCCESS",
+    });
+
     res.json({
       success: true,
       user: {
@@ -281,25 +294,17 @@ export const getUserDetails = async (req: Request, res: Response) => {
   }
 };
 
-// ✅ NEW: Create lifetime account directly
+// ✅ UPDATED: Create lifetime account with audit logging
 export const createLifetimeAccount = async (req: Request, res: Response) => {
+  const adminId = (req as any).admin?.adminId;
+
   try {
     const { email, name, companyName, notes } = req.body;
-    const adminId = (req as any).admin?.id;
 
     if (!email) {
       return res.status(400).json({
         success: false,
         error: "Email is required",
-      });
-    }
-
-    // Validate email format
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      return res.status(400).json({
-        success: false,
-        error: "Invalid email format",
       });
     }
 
@@ -311,13 +316,23 @@ export const createLifetimeAccount = async (req: Request, res: Response) => {
       .limit(1);
 
     if (existing) {
+      // ✅ Log failed attempt
+      await logAdminAction(req, {
+        adminId,
+        action: ADMIN_ACTIONS.CREATE_LIFETIME_ACCOUNT_FAILED,
+        targetType: "USER",
+        targetEmail: email,
+        status: "FAILED",
+        errorMessage: "Email already exists",
+      });
+
       return res.status(400).json({
         success: false,
         error: "User with this email already exists",
       });
     }
 
-    console.log(`👤 Creating lifetime account for ${email}`);
+    console.log(`👤 Admin ${adminId} creating lifetime account for ${email}`);
 
     // Create user
     const [newUser] = await db
@@ -325,14 +340,12 @@ export const createLifetimeAccount = async (req: Request, res: Response) => {
       .values({
         email: email.toLowerCase().trim(),
         name: name?.trim() || null,
-        passwordHash: null, // No password initially - user can set via "Forgot Password"
-        verified: true, // Auto-verify
+        passwordHash: null,
+        verified: true,
         provider: "admin_created",
         createdAt: new Date(),
       })
       .returning();
-
-    console.log(`✅ User created: ${newUser.id}`);
 
     // Create lifetime subscription
     await db.insert(subscriptions).values({
@@ -348,7 +361,7 @@ export const createLifetimeAccount = async (req: Request, res: Response) => {
       specialNotes: notes?.trim() || null,
       grantedBy: adminId,
       currentPeriodStart: new Date(),
-      currentPeriodEnd: new Date("2099-12-31"), // Never expires
+      currentPeriodEnd: new Date("2099-12-31"),
       cancelAtPeriodEnd: false,
       trialStart: null,
       trialEnd: null,
@@ -356,10 +369,23 @@ export const createLifetimeAccount = async (req: Request, res: Response) => {
       updatedAt: new Date(),
     });
 
-    console.log(`✅ Lifetime subscription created for user ${newUser.id}`);
-    console.log(`   Type: ${companyName ? "Company" : "Personal"}`);
-    console.log(`   Company: ${companyName || "N/A"}`);
-    console.log(`   Notes: ${notes || "N/A"}`);
+    // ✅ Log successful creation
+    await logAdminAction(req, {
+      adminId,
+      action: ADMIN_ACTIONS.CREATE_LIFETIME_ACCOUNT,
+      targetType: "USER",
+      targetId: newUser.id,
+      targetEmail: newUser.email,
+      status: "SUCCESS",
+      details: {
+        userName: newUser.name,
+        accountType: companyName ? "Company" : "Personal",
+        companyName: companyName || null,
+        hasNotes: !!notes,
+      },
+    });
+
+    console.log(`✅ Lifetime account created: ${newUser.email} by admin ${adminId}`);
 
     res.json({
       success: true,
@@ -368,19 +394,31 @@ export const createLifetimeAccount = async (req: Request, res: Response) => {
         email: newUser.email,
         name: newUser.name,
       },
-      message: `Lifetime account created successfully. User can set password via "Forgot Password" using email: ${newUser.email}`,
+      message: `Lifetime account created. User can set password via "Forgot Password" using: ${newUser.email}`,
     });
   } catch (error: any) {
     console.error("❌ Create lifetime account error:", error);
-    res.status(500).json({ success: false, error: error.message });
+
+    // ✅ Log failed creation
+    await logAdminAction(req, {
+      adminId,
+      action: ADMIN_ACTIONS.CREATE_LIFETIME_ACCOUNT_FAILED,
+      targetType: "USER",
+      targetEmail: req.body.email,
+      status: "FAILED",
+      errorMessage: error.message,
+    });
+
+    res.status(500).json({ success: false, error: "Failed to create lifetime account" });
   }
 };
 
 // ✅ NEW: Delete user (admin only)
 export const deleteUser = async (req: Request, res: Response) => {
+  const adminId = (req as any).admin?.adminId;
+  
   try {
     const { userId } = req.params;
-    const adminId = (req as any).admin?.id;
 
     if (!userId) {
       return res.status(400).json({
@@ -397,13 +435,34 @@ export const deleteUser = async (req: Request, res: Response) => {
     const [user] = await db.select().from(users).where(eq(users.id, userIdNum));
 
     if (!user) {
+      // ✅ Log failed attempt
+      await logAdminAction(req, {
+        adminId,
+        action: ADMIN_ACTIONS.DELETE_USER_FAILED,
+        targetType: "USER",
+        targetId: userIdNum,
+        status: "FAILED",
+        errorMessage: "User not found",
+      });
+
       return res.status(404).json({
         success: false,
         error: "User not found",
       });
     }
 
-    // 2. Cancel Stripe subscription if exists
+    // 2. Get user stats before deletion
+    const [projectsCount] = await db
+      .select({ count: count() })
+      .from(projects)
+      .where(eq(projects.userId, userIdNum));
+
+    const [rendersCount] = await db
+      .select({ count: count() })
+      .from(renders)
+      .where(eq(renders.userId, userIdNum));
+
+    // 3. Cancel Stripe subscription if exists
     const [subscription] = await db
       .select()
       .from(subscriptions)
@@ -413,42 +472,45 @@ export const deleteUser = async (req: Request, res: Response) => {
     if (subscription?.stripeSubscriptionId) {
       try {
         await stripe.subscriptions.cancel(subscription.stripeSubscriptionId);
-        console.log(
-          `✅ Canceled Stripe subscription: ${subscription.stripeSubscriptionId}`
-        );
+        console.log(`✅ Canceled Stripe subscription: ${subscription.stripeSubscriptionId}`);
       } catch (stripeError) {
         console.error("⚠️ Failed to cancel Stripe subscription:", stripeError);
-        // Continue with deletion even if Stripe cancellation fails
       }
     }
 
-    // 3. Delete all user data (tables WITHOUT cascade delete)
+    // 4. Delete all user data
     await db.delete(projects).where(eq(projects.userId, userIdNum));
     await db.delete(renders).where(eq(renders.userId, userIdNum));
     await db.delete(uploads).where(eq(uploads.userId, userIdNum));
     await db.delete(datasets).where(eq(datasets.userId, userIdNum));
-    await db
-      .delete(veo3Generations)
-      .where(eq(veo3Generations.userId, userIdNum));
-    await db
-      .delete(imageGenerations)
-      .where(eq(imageGenerations.userId, userIdNum));
-    await db
-      .delete(youtubeDownloads)
-      .where(eq(youtubeDownloads.userId, userIdNum));
+    await db.delete(veo3Generations).where(eq(veo3Generations.userId, userIdNum));
+    await db.delete(imageGenerations).where(eq(imageGenerations.userId, userIdNum));
+    await db.delete(youtubeDownloads).where(eq(youtubeDownloads.userId, userIdNum));
     await db.delete(loginAttempts).where(eq(loginAttempts.email, user.email));
     await db.delete(pageVisits).where(eq(pageVisits.userId, userIdNum));
 
-    console.log(`✅ Deleted all user data for user ${userIdNum}`);
-
-    // Note: refreshTokens and subscriptions have onDelete: "cascade" so they'll auto-delete
-
-    // 4. Delete user (this will cascade delete refreshTokens and subscriptions)
+    // 5. Delete user
     await db.delete(users).where(eq(users.id, userIdNum));
 
-    console.log(
-      `✅ User account deleted: ${user.email} (ID: ${userIdNum}) by admin ${adminId}`
-    );
+    // ✅ Log successful deletion
+    await logAdminAction(req, {
+      adminId,
+      action: ADMIN_ACTIONS.DELETE_USER,
+      targetType: "USER",
+      targetId: userIdNum,
+      targetEmail: user.email,
+      status: "SUCCESS",
+      details: {
+        userName: user.name,
+        userEmail: user.email,
+        totalProjects: projectsCount.count,
+        totalRenders: rendersCount.count,
+        hadStripeSubscription: !!subscription?.stripeSubscriptionId,
+        subscriptionStatus: subscription?.status,
+      },
+    });
+
+    console.log(`✅ User deleted: ${user.email} (ID: ${userIdNum}) by admin ${adminId}`);
 
     res.json({
       success: true,
@@ -456,6 +518,17 @@ export const deleteUser = async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error("❌ Admin delete user error:", error);
-    res.status(500).json({ success: false, error: error.message });
+
+    // ✅ Log failed deletion
+    await logAdminAction(req, {
+      adminId,
+      action: ADMIN_ACTIONS.DELETE_USER_FAILED,
+      targetType: "USER",
+      targetId: parseInt(req.params.userId, 10),
+      status: "FAILED",
+      errorMessage: error.message,
+    });
+
+    res.status(500).json({ success: false, error: "Failed to delete user" });
   }
 };

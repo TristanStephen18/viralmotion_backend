@@ -3,6 +3,7 @@ import { db } from "../../db/client.ts";
 import { subscriptions, users } from "../../db/schema.ts";
 import { eq, and } from "drizzle-orm";
 import { stripe } from "../../config/stripe.ts"; // ✅ Import Stripe
+import { logAdminAction, ADMIN_ACTIONS } from "../../utils/auditLogger.ts";
 
 interface AuthRequest extends Request {
   admin?: {
@@ -12,11 +13,12 @@ interface AuthRequest extends Request {
   };
 }
 
-// Grant lifetime access to a user
+// ✅ UPDATED: Grant lifetime access with audit logging
 export const grantLifetimeAccess = async (req: AuthRequest, res: Response) => {
+  const adminId = req.admin?.id;
+
   try {
     const { userId, companyName, notes } = req.body;
-    const adminId = req.admin?.id;
 
     if (!userId) {
       return res.status(400).json({
@@ -25,9 +27,30 @@ export const grantLifetimeAccess = async (req: AuthRequest, res: Response) => {
       });
     }
 
-    console.log(
-      `🌟 Granting lifetime access to user ${userId} by admin ${adminId}`
-    );
+    console.log(`🌟 Admin ${adminId} granting lifetime access to user ${userId}`);
+
+    // Get user email for logging
+    const [user] = await db
+      .select()
+      .from(users)
+      .where(eq(users.id, parseInt(userId as string, 10)))
+      .limit(1);
+
+    if (!user) {
+      await logAdminAction(req as any, {
+        adminId: adminId!,
+        action: ADMIN_ACTIONS.GRANT_LIFETIME_FAILED,
+        targetType: "USER",
+        targetId: parseInt(userId as string, 10),
+        status: "FAILED",
+        errorMessage: "User not found",
+      });
+
+      return res.status(404).json({
+        success: false,
+        error: "User not found",
+      });
+    }
 
     // Check if user already has a subscription
     const [existingSub] = await db
@@ -36,17 +59,13 @@ export const grantLifetimeAccess = async (req: AuthRequest, res: Response) => {
       .where(eq(subscriptions.userId, userId))
       .limit(1);
 
-    // ✅ CRITICAL: Cancel Stripe subscription if it exists
+    // Cancel Stripe subscription if it exists
     if (existingSub && existingSub.stripeSubscriptionId) {
-      console.log(
-        `🚫 Canceling existing Stripe subscription: ${existingSub.stripeSubscriptionId}`
-      );
+      console.log(`🚫 Canceling Stripe subscription: ${existingSub.stripeSubscriptionId}`);
 
       try {
         await stripe.subscriptions.cancel(existingSub.stripeSubscriptionId);
-        console.log(
-          `✅ Stripe subscription ${existingSub.stripeSubscriptionId} canceled`
-        );
+        console.log(`✅ Stripe subscription ${existingSub.stripeSubscriptionId} canceled`);
       } catch (stripeError: any) {
         if (stripeError.code === "resource_missing") {
           console.log(`⚠️ Subscription not found in Stripe (already canceled)`);
@@ -69,47 +88,71 @@ export const grantLifetimeAccess = async (req: AuthRequest, res: Response) => {
       specialNotes: notes || null,
       grantedBy: adminId,
       currentPeriodStart: new Date(),
-      currentPeriodEnd: new Date("2099-12-31"), // Never expires
+      currentPeriodEnd: new Date("2099-12-31"),
       cancelAtPeriodEnd: false,
-      canceledAt: existingSub?.stripeSubscriptionId ? new Date() : null, // ✅ Mark when canceled
+      canceledAt: existingSub?.stripeSubscriptionId ? new Date() : null,
       trialStart: null,
       trialEnd: null,
       updatedAt: new Date(),
     };
 
     if (existingSub) {
-      // Update existing subscription
       await db
         .update(subscriptions)
         .set(lifetimeData)
         .where(eq(subscriptions.id, existingSub.id));
-
-      console.log(
-        `✅ Updated existing subscription to lifetime for user ${userId}`
-      );
     } else {
-      // Create new lifetime subscription
       await db.insert(subscriptions).values({
         ...lifetimeData,
         createdAt: new Date(),
       });
-
-      console.log(`✅ Created new lifetime subscription for user ${userId}`);
     }
+
+    // ✅ Log successful grant
+    await logAdminAction(req as any, {
+      adminId: adminId!,
+      action: ADMIN_ACTIONS.GRANT_LIFETIME,
+      targetType: "USER",
+      targetId: parseInt(userId as string, 10),
+      targetEmail: user.email,
+      status: "SUCCESS",
+      details: {
+        accountType: companyName ? "Company" : "Personal",
+        companyName: companyName || null,
+        hadPreviousSubscription: !!existingSub,
+        previousStatus: existingSub?.status,
+        canceledStripeSubscription: !!existingSub?.stripeSubscriptionId,
+      },
+    });
+
+    console.log(`✅ Lifetime access granted to user ${userId} by admin ${adminId}`);
 
     res.json({
       success: true,
-      message: `Lifetime access granted to user ${userId}. Stripe subscription canceled if it existed.`,
+      message: `Lifetime access granted. ${existingSub?.stripeSubscriptionId ? "Stripe subscription canceled." : ""}`,
     });
   } catch (error: any) {
     console.error("❌ Grant lifetime access error:", error);
-    res.status(500).json({ success: false, error: error.message });
+
+    // ✅ Log failed grant
+    await logAdminAction(req as any, {
+      adminId: adminId!,
+      action: ADMIN_ACTIONS.GRANT_LIFETIME_FAILED,
+      targetType: "USER",
+      targetId: parseInt(req.body.userId as string, 10),
+      status: "FAILED",
+      errorMessage: error.message,
+    });
+
+    res.status(500).json({ success: false, error: "Failed to grant lifetime access" });
   }
 };
 
 // Revoke lifetime access from a user
-// Revoke lifetime access from a user
+// ✅ UPDATED: Revoke lifetime access with audit logging
 export const revokeLifetimeAccess = async (req: AuthRequest, res: Response) => {
+  const adminId = req.admin?.id;
+
   try {
     const { userId } = req.body;
 
@@ -120,7 +163,14 @@ export const revokeLifetimeAccess = async (req: AuthRequest, res: Response) => {
       });
     }
 
-    console.log(`🚫 Revoking lifetime access from user ${userId}`);
+    console.log(`🚫 Admin ${adminId} revoking lifetime access from user ${userId}`);
+
+    // Get user email for logging
+    const [user] = await db
+      .select()
+      .from(users)
+      .where(eq(users.id, parseInt(userId as string, 10)))
+      .limit(1);
 
     const [lifetimeSub] = await db
       .select()
@@ -134,25 +184,49 @@ export const revokeLifetimeAccess = async (req: AuthRequest, res: Response) => {
       .limit(1);
 
     if (!lifetimeSub) {
+      await logAdminAction(req as any, {
+        adminId: adminId!,
+        action: ADMIN_ACTIONS.REVOKE_LIFETIME_FAILED,
+        targetType: "USER",
+        targetId: parseInt(userId as string, 10),
+        targetEmail: user?.email,
+        status: "FAILED",
+        errorMessage: "No lifetime subscription found",
+      });
+
       return res.status(404).json({
         success: false,
         error: "No lifetime subscription found for this user",
       });
     }
 
-    // ✅ CRITICAL FIX: Set isLifetime to false AND mark as canceled
+    // Revoke lifetime access
     await db
       .update(subscriptions)
       .set({
         status: "canceled",
-        isLifetime: false, // ✅ This is critical!
-        isCompanyAccount: false, // ✅ Also reset this
+        isLifetime: false,
+        isCompanyAccount: false,
         canceledAt: new Date(),
         updatedAt: new Date(),
       })
       .where(eq(subscriptions.id, lifetimeSub.id));
 
-    console.log(`✅ Lifetime access revoked from user ${userId}`);
+    // ✅ Log successful revoke
+    await logAdminAction(req as any, {
+      adminId: adminId!,
+      action: ADMIN_ACTIONS.REVOKE_LIFETIME,
+      targetType: "USER",
+      targetId: parseInt(userId as string, 10),
+      targetEmail: user?.email,
+      status: "SUCCESS",
+      details: {
+        previousAccountType: lifetimeSub.isCompanyAccount ? "Company" : "Personal",
+        companyName: lifetimeSub.companyName,
+      },
+    });
+
+    console.log(`✅ Lifetime access revoked from user ${userId} by admin ${adminId}`);
 
     res.json({
       success: true,
@@ -160,7 +234,18 @@ export const revokeLifetimeAccess = async (req: AuthRequest, res: Response) => {
     });
   } catch (error: any) {
     console.error("❌ Revoke lifetime access error:", error);
-    res.status(500).json({ success: false, error: error.message });
+
+    // ✅ Log failed revoke
+    await logAdminAction(req as any, {
+      adminId: adminId!,
+      action: ADMIN_ACTIONS.REVOKE_LIFETIME_FAILED,
+      targetType: "USER",
+      targetId: parseInt(req.body.userId as string, 10),
+      status: "FAILED",
+      errorMessage: error.message,
+    });
+
+    res.status(500).json({ success: false, error: "Failed to revoke lifetime access" });
   }
 };
 

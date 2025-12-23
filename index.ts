@@ -81,7 +81,7 @@ app.use(
     },
     credentials: true, // Allow cookies to be sent
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization", "X-2FA-Verified"],
+    allowedHeaders: ["Content-Type", "Authorization", "X-2FA-Verified", "X-Reauth-Token"],
     exposedHeaders: ["Set-Cookie"],
   })
 );
