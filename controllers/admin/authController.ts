@@ -5,7 +5,10 @@ import { db } from "../../db/client.ts";
 import { adminUsers } from "../../db/schema.ts";
 import { eq } from "drizzle-orm";
 import { logAdminAction, ADMIN_ACTIONS } from "../../utils/auditLogger.ts";
-import { ADMIN_JWT_EXPIRES_IN, blacklistToken } from "../../middleware/adminAuth.ts";
+import {
+  ADMIN_JWT_EXPIRES_IN,
+  blacklistToken,
+} from "../../middleware/adminAuth.ts";
 
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) {
@@ -21,11 +24,15 @@ const ADMIN_PASSWORD_REQUIREMENTS = {
   requireSpecialChars: true,
 };
 
-const validateAdminPassword = (password: string): { valid: boolean; errors: string[] } => {
+const validateAdminPassword = (
+  password: string
+): { valid: boolean; errors: string[] } => {
   const errors: string[] = [];
 
   if (password.length < ADMIN_PASSWORD_REQUIREMENTS.minLength) {
-    errors.push(`Password must be at least ${ADMIN_PASSWORD_REQUIREMENTS.minLength} characters`);
+    errors.push(
+      `Password must be at least ${ADMIN_PASSWORD_REQUIREMENTS.minLength} characters`
+    );
   }
   if (!/[A-Z]/.test(password)) {
     errors.push("Password must contain uppercase letters");
@@ -136,9 +143,9 @@ export const adminLogin = async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error("❌ Admin login error:", error);
-    res.status(500).json({ 
-      success: false, 
-      error: "Login failed" 
+    res.status(500).json({
+      success: false,
+      error: "Login failed",
     });
   }
 };
@@ -151,11 +158,11 @@ export const adminLogout = async (req: Request, res: Response) => {
 
     if (authHeader && authHeader.startsWith("Bearer ")) {
       const token = authHeader.substring(7);
-      
+
       // Calculate expiry (1 hour from now)
       const expiresAt = new Date();
       expiresAt.setHours(expiresAt.getHours() + 1);
-      
+
       await blacklistToken(token, expiresAt);
     }
 
@@ -173,9 +180,9 @@ export const adminLogout = async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error("❌ Admin logout error:", error);
-    res.status(500).json({ 
-      success: false, 
-      error: "Logout failed" 
+    res.status(500).json({
+      success: false,
+      error: "Logout failed",
     });
   }
 };
@@ -235,9 +242,9 @@ export const createFirstAdmin = async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error("❌ Create admin error:", error);
-    res.status(500).json({ 
-      success: false, 
-      error: "Failed to create admin" 
+    res.status(500).json({
+      success: false,
+      error: "Failed to create admin",
     });
   }
 };
@@ -303,7 +310,8 @@ export const generateReAuthToken = async (req: Request, res: Response) => {
       success: true,
       reAuthToken,
       expiresIn: "2m",
-      message: "Password confirmed. You have 2 minutes to complete this action.",
+      message:
+        "Password confirmed. You have 2 minutes to complete this action.",
     });
   } catch (error: any) {
     console.error("❌ Re-auth error:", error);
@@ -388,7 +396,9 @@ export const createAdminUser = async (req: Request, res: Response) => {
       },
     });
 
-    console.log(`✅ New admin created: ${newAdmin.email} by admin ${creatorAdminId}`);
+    console.log(
+      `✅ New admin created: ${newAdmin.email} by admin ${creatorAdminId}`
+    );
 
     res.json({
       success: true,
@@ -413,9 +423,52 @@ export const createAdminUser = async (req: Request, res: Response) => {
       errorMessage: error.message,
     });
 
-    res.status(500).json({ 
-      success: false, 
-      error: "Failed to create admin user" 
+    res.status(500).json({
+      success: false,
+      error: "Failed to create admin user",
+    });
+  }
+};
+// ✅ NEW: Extend admin session (requires re-auth)
+export const extendAdminSession = async (req: Request, res: Response) => {
+  try {
+    const admin = (req as any).admin;
+
+    if (!admin) {
+      return res.status(401).json({
+        success: false,
+        error: "Unauthorized",
+      });
+    }
+
+    // ✅ Generate new token with extended expiry
+    const newToken = jwt.sign(
+      {
+        adminId: admin.adminId,
+        email: admin.email,
+        role: admin.role,
+      },
+      JWT_SECRET,
+      { expiresIn: ADMIN_JWT_EXPIRES_IN }
+    );
+
+    await logAdminAction(req, {
+      adminId: admin.adminId,
+      action: "EXTEND_SESSION",
+      status: "SUCCESS",
+    });
+
+    res.json({
+      success: true,
+      token: newToken,
+      expiresIn: ADMIN_JWT_EXPIRES_IN,
+      message: "Session extended successfully",
+    });
+  } catch (error: any) {
+    console.error("❌ Extend session error:", error);
+    res.status(500).json({
+      success: false,
+      error: "Failed to extend session",
     });
   }
 };

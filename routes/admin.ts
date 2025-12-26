@@ -6,11 +6,13 @@ import {
   adminLogout,
   generateReAuthToken,
   createAdminUser,
+  extendAdminSession,
 } from "../controllers/admin/authController.ts";
 import {
   getDashboardStats,
   getVisitAnalytics,
-  trackPageVisit,
+  trackAnalyticsBatch,
+  getEngagementMetrics,
 } from "../controllers/admin/analyticsController.ts";
 import {
   getUsers,
@@ -40,6 +42,8 @@ import {
   validateCreateLifetimeAccount,
   validateUserListQuery,
 } from "../middleware/adminValidator.ts";
+import rateLimit from "express-rate-limit";
+
 
 const router = Router();
 
@@ -51,8 +55,19 @@ router.post("/auth/login", adminLoginRateLimiter, adminLogin);
 // ✅ Create first admin (one-time setup)
 router.post("/auth/setup", createFirstAdmin);
 
-// ✅ Track page visit (public)
-router.post("/analytics/track-visit", trackPageVisit);
+// ✅ NEW: Public analytics tracking endpoint (rate limited)
+const analyticsRateLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 30, // Max 30 requests per minute per IP
+  message: { success: false, error: "Too many analytics requests" },
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: {
+    trustProxy: false,
+  },
+});
+
+router.post("/analytics/track", analyticsRateLimiter, trackAnalyticsBatch);
 
 // ========== PROTECTED ROUTES (REQUIRE AUTH) ==========
 
@@ -68,6 +83,14 @@ router.post("/auth/logout", adminLogout);
 // ✅ Generate re-auth token for critical operations
 router.post("/auth/reauth", adminOperationsRateLimiter, generateReAuthToken);
 
+// ✅ Create additional admin user (CRITICAL - requires re-auth)
+router.post(
+  "/auth/create-admin",
+  adminCriticalRateLimiter,
+  requireReAuth(),
+  createAdminUser
+);
+
 // ========== ANALYTICS ROUTES ==========
 
 // ✅ Dashboard stats
@@ -82,6 +105,13 @@ router.get(
   "/analytics/visits",
   adminOperationsRateLimiter,
   getVisitAnalytics
+);
+
+// ✅ NEW: Engagement metrics
+router.get(
+  "/analytics/engagement",
+  adminOperationsRateLimiter,
+  getEngagementMetrics
 );
 
 // ========== USER MANAGEMENT ROUTES ==========
@@ -141,14 +171,6 @@ router.post(
   revokeLifetimeAccess
 );
 
-// Create additional admin user (CRITICAL - requires re-auth)
-router.post(
-  "/auth/create-admin",
-  adminCriticalRateLimiter,
-  requireReAuth(),
-  createAdminUser
-);
-
 // ✅ Get lifetime accounts
 router.get(
   "/subscriptions/lifetime",
@@ -170,6 +192,14 @@ router.get(
   "/audit/stats",
   adminOperationsRateLimiter,
   getAuditStats
+);
+
+// Extend session (requires re-auth)
+router.post(
+  "/auth/extend-session",
+  adminOperationsRateLimiter,
+  requireReAuth(),
+  extendAdminSession
 );
 
 export default router;

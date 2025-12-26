@@ -12,7 +12,7 @@ if (!JWT_SECRET) {
 }
 
 // ✅ VERY SHORT token expiry for admins (1 hour instead of 2)
-export const ADMIN_JWT_EXPIRES_IN = "1h";
+export const ADMIN_JWT_EXPIRES_IN = "1hr";
 
 export interface AdminAuthRequest extends Request {
   admin?: {
