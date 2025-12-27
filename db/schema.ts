@@ -285,6 +285,7 @@ export const adminUsers = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
     lastLogin: timestamp("last_login"),
     active: boolean("active").default(true).notNull(),
+    passwordChangedAt: timestamp("password_changed_at")
   },
   (table) => ({
     emailIdx: index("admin_users_email_idx").on(table.email),
