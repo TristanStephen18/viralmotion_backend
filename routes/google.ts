@@ -3,7 +3,7 @@ import passport from "passport";
 import pkg from "passport-google-oauth20";
 import type { Profile } from "passport-google-oauth20";
 import { eq } from "drizzle-orm";
-import { users } from "../db/schema.ts";
+import { users, subscriptions } from "../db/schema.ts"; // ✅ ADDED: subscriptions
 import { db } from "../db/client.ts";
 import {
   generateAccessToken,
@@ -21,7 +21,7 @@ const router = Router();
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID!;
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET!;
 
-const CLIENT_URL =process.env.CLIENT_URL || "https://www.viralmotion.ai";
+const CLIENT_URL = process.env.CLIENT_URL || "https://www.viralmotion.ai";
 const BACKEND_URL = process.env.BACKEND_URL || "https://viralmotion-backend-kx15.onrender.com";
 
 console.log(`🔧 OAuth Config: Backend=${BACKEND_URL}, Client=${CLIENT_URL}`);
@@ -69,6 +69,8 @@ passport.use(
             .where(eq(users.id, existing.id));
           
           user = existing;
+          
+          console.log(`✅ Existing Google user logged in: ${email}`);
         } else {
           // ✅ Create new user
           const [newUser] = await db
@@ -84,6 +86,33 @@ passport.use(
             .returning();
           
           user = newUser;
+          
+          console.log(`✨ New Google user created: ${email} (ID: ${user.id})`);
+
+          // ✅ NEW: CREATE FREE 7-DAY TRIAL FOR NEW GOOGLE USERS
+          try {
+            const trialEndDate = new Date();
+            trialEndDate.setDate(trialEndDate.getDate() + 7);
+
+            await db.insert(subscriptions).values({
+              userId: user.id,
+              stripeSubscriptionId: null,
+              stripeCustomerId: null,
+              stripePriceId: null,
+              status: "free_trial",
+              plan: "free",
+              currentPeriodStart: new Date(),
+              currentPeriodEnd: trialEndDate,
+              cancelAtPeriodEnd: false,
+              trialStart: new Date(),
+              trialEnd: trialEndDate,
+            });
+
+            console.log(`✅ Created free 7-day trial for Google user ${user.id} (${email})`);
+          } catch (trialError) {
+            console.error("⚠️ Failed to create free trial for Google user:", trialError);
+            // Don't fail the entire OAuth flow if trial creation fails
+          }
         }
 
         return done(null, user);
@@ -139,8 +168,8 @@ router.get(
       setAccessTokenCookie(res, accessToken);
       setRefreshTokenCookie(res, refreshToken);
 
-      // ✅ FIXED: Redirect to client's loading page with token
-      console.log(`✅ Redirecting to: ${CLIENT_URL}/loading?token=${accessToken.substring(0, 20)}...&email=${user.email}`);
+      // ✅ Redirect to client's loading page with token
+      console.log(`✅ Google OAuth complete for ${user.email}, redirecting to loading page`);
       res.redirect(`${CLIENT_URL}/loading?token=${accessToken}&email=${encodeURIComponent(user.email)}`);
     } catch (err) {
       console.error("Google callback error:", err);
