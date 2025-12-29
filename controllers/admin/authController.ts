@@ -472,3 +472,228 @@ export const extendAdminSession = async (req: Request, res: Response) => {
     });
   }
 };
+
+// ✅ ENHANCED: Change admin password with optional logout all devices
+export const changeAdminPassword = async (req: Request, res: Response) => {
+  try {
+    const admin = (req as any).admin;
+    const { currentPassword, newPassword, logoutAllDevices } = req.body;
+
+    console.log("🔐 Change password request received for admin:", admin.adminId);
+
+    if (!admin) {
+      return res.status(401).json({
+        success: false,
+        error: "Unauthorized",
+      });
+    }
+
+    // Validate passwords
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({
+        success: false,
+        error: "Current password and new password are required",
+      });
+    }
+
+    // Password requirements (14+ chars, uppercase, lowercase, number, special)
+    if (newPassword.length < 14) {
+      return res.status(400).json({
+        success: false,
+        error: "Password must be at least 14 characters",
+      });
+    }
+
+    if (
+      !/[A-Z]/.test(newPassword) ||
+      !/[a-z]/.test(newPassword) ||
+      !/[0-9]/.test(newPassword) ||
+      !/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(newPassword)
+    ) {
+      return res.status(400).json({
+        success: false,
+        error:
+          "Password must contain uppercase, lowercase, number, and special character",
+      });
+    }
+
+    // ✅ Get admin from database with all fields
+    const adminUsers_result = await db
+      .select()
+      .from(adminUsers)
+      .where(eq(adminUsers.id, admin.adminId))
+      .limit(1);
+
+    console.log("📊 Query result:", {
+      found: adminUsers_result.length > 0,
+      fields: adminUsers_result[0] ? Object.keys(adminUsers_result[0]) : [],
+    });
+
+    const [adminUser] = adminUsers_result;
+
+    if (!adminUser) {
+      return res.status(404).json({
+        success: false,
+        error: "Admin not found",
+      });
+    }
+
+    // ✅ Check if passwordHash exists
+    if (!adminUser.passwordHash) {
+      console.error("❌ passwordHash is missing from admin user:", {
+        id: adminUser.id,
+        email: adminUser.email,
+        availableFields: Object.keys(adminUser),
+      });
+      return res.status(500).json({
+        success: false,
+        error: "Password hash not found in database",
+      });
+    }
+
+    console.log("✅ passwordHash found, comparing passwords...");
+
+    // Verify current password
+    const isValidPassword = await bcrypt.compare(
+      currentPassword,
+      adminUser.passwordHash
+    );
+
+    if (!isValidPassword) {
+      console.log("❌ Current password is incorrect");
+      await logAdminAction(req, {
+        adminId: admin.adminId,
+        action: "CHANGE_PASSWORD",
+        status: "FAILED",
+        errorMessage: "Invalid current password",
+      });
+
+      return res.status(400).json({
+        success: false,
+        error: "Current password is incorrect",
+      });
+    }
+
+    console.log("✅ Current password verified, hashing new password...");
+
+    // Hash new password
+    const hashedPassword = await bcrypt.hash(newPassword, 12);
+
+    // Update password and optionally passwordChangedAt
+    const updateData: any = {
+      passwordHash: hashedPassword,
+    };
+
+    // Only update passwordChangedAt if logging out all devices
+    if (logoutAllDevices) {
+      updateData.passwordChangedAt = new Date();
+      console.log("🔄 Will log out all devices");
+    }
+
+    console.log("💾 Updating password in database...");
+
+    await db
+      .update(adminUsers)
+      .set(updateData)
+      .where(eq(adminUsers.id, admin.adminId));
+
+    console.log("✅ Password updated successfully");
+
+    await logAdminAction(req, {
+      adminId: admin.adminId,
+      action: "CHANGE_PASSWORD",
+      status: "SUCCESS",
+      details: {
+        logoutAllDevices: logoutAllDevices || false,
+      },
+    });
+
+    res.json({
+      success: true,
+      message: logoutAllDevices
+        ? "Password changed successfully. All sessions have been logged out."
+        : "Password changed successfully",
+    });
+  } catch (error: any) {
+    console.error("❌ Change password error:", error);
+    console.error("Error stack:", error.stack);
+    res.status(500).json({
+      success: false,
+      error: "Failed to change password",
+    });
+  }
+};
+
+// ✅ FIXED: Update admin profile (requires re-auth)
+export const updateAdminProfile = async (req: Request, res: Response) => {
+  try {
+    const admin = (req as any).admin;
+    const { name } = req.body;
+
+    if (!admin) {
+      return res.status(401).json({
+        success: false,
+        error: "Unauthorized",
+      });
+    }
+
+    // Validate name
+    if (!name || name.trim().length < 2) {
+      return res.status(400).json({
+        success: false,
+        error: "Name must be at least 2 characters",
+      });
+    }
+
+    if (name.trim().length > 100) {
+      return res.status(400).json({
+        success: false,
+        error: "Name must be less than 100 characters",
+      });
+    }
+
+    // Update admin name
+    await db
+      .update(adminUsers)
+      .set({
+        name: name.trim(),
+      })
+      .where(eq(adminUsers.id, admin.adminId));
+
+    // ✅ NEW: Fetch updated admin data
+    const [updatedAdmin] = await db
+      .select({
+        id: adminUsers.id,
+        email: adminUsers.email,
+        name: adminUsers.name,
+        role: adminUsers.role,
+        lastLogin: adminUsers.lastLogin,
+      })
+      .from(adminUsers)
+      .where(eq(adminUsers.id, admin.adminId))
+      .limit(1);
+
+    await logAdminAction(req, {
+      adminId: admin.adminId,
+      action: "UPDATE_PROFILE",
+      status: "SUCCESS",
+      details: {
+        oldName: admin.name,
+        newName: name.trim(),
+      },
+    });
+
+    // ✅ NEW: Return updated admin object
+    res.json({
+      success: true,
+      message: "Profile updated successfully",
+      admin: updatedAdmin, // ✅ Include updated admin
+    });
+  } catch (error: any) {
+    console.error("❌ Update profile error:", error);
+    res.status(500).json({
+      success: false,
+      error: "Failed to update profile",
+    });
+  }
+};
