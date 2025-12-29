@@ -284,6 +284,7 @@ export const adminUsers = pgTable(
       .notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     lastLogin: timestamp("last_login"),
+    passwordChangedAt: timestamp("password_changed_at"),
     active: boolean("active").default(true).notNull(),
   },
   (table) => ({
