@@ -116,9 +116,9 @@ const sanitizeDetails = (details: any): any => {
   return removeSensitiveFields(sanitized);
 };
 
-/**
- * Predefined action types for consistency and searchability
- * Using constants prevents typos and makes it easier to query logs
+/*
+ Predefined action types for consistency and searchability
+ Using constants prevents typos and makes it easier to query logs
  */
 export const ADMIN_ACTIONS = {
   // ========== AUTHENTICATION ==========
@@ -128,6 +128,8 @@ export const ADMIN_ACTIONS = {
   REAUTH_SUCCESS: "ADMIN_REAUTH_SUCCESS",
   REAUTH_FAILED: "ADMIN_REAUTH_FAILED",
   EXTEND_SESSION: "ADMIN_EXTEND_SESSION",
+  CHANGE_PASSWORD: "ADMIN_CHANGE_PASSWORD",
+  UPDATE_PROFILE: "ADMIN_UPDATE_PROFILE",
   
   // ========== USER MANAGEMENT ==========
   VIEW_USER_LIST: "VIEW_USER_LIST",
@@ -154,8 +156,8 @@ export const ADMIN_ACTIONS = {
   SUSPICIOUS_ACTIVITY: "SUSPICIOUS_ACTIVITY",
 } as const;
 
-/**
- * Get audit logs for a specific admin
+/*
+  Get audit logs for a specific admin
  */
 export const getAdminLogs = async (adminId: number, limit: number = 100) => {
   return await db
@@ -166,8 +168,8 @@ export const getAdminLogs = async (adminId: number, limit: number = 100) => {
     .limit(limit);
 };
 
-/**
- * Get audit logs for a specific action type
+/*
+  Get audit logs for a specific action type
  */
 export const getActionLogs = async (action: string, limit: number = 100) => {
   return await db
@@ -178,8 +180,8 @@ export const getActionLogs = async (action: string, limit: number = 100) => {
     .limit(limit);
 };
 
-/**
- * Get audit logs for a specific target (e.g., all actions on a specific user)
+/*
+ Get audit logs for a specific target (e.g., all actions on a specific user)
  */
 export const getTargetLogs = async (
   targetType: string, 
@@ -199,8 +201,8 @@ export const getTargetLogs = async (
     .limit(limit);
 };
 
-/**
- * Get failed actions (for security monitoring)
+/*
+  Get failed actions (for security monitoring)
  */
 export const getFailedActions = async (hours: number = 24, limit: number = 100) => {
   const since = new Date();

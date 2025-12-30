@@ -22,7 +22,7 @@ export interface AdminAuthRequest extends Request {
   };
 }
 
-// ✅ Enhanced token verification with database blacklist check
+// ✅ Enhanced token verification with password change check
 export const verifyAdminToken = async (
   req: AdminAuthRequest,
   res: Response,
@@ -61,6 +61,7 @@ export const verifyAdminToken = async (
         adminId: number;
         email: string;
         role: string;
+        iat: number; // ✅ Token issued at timestamp
       };
     } catch (jwtError: any) {
       if (jwtError.name === "TokenExpiredError") {
@@ -100,6 +101,19 @@ export const verifyAdminToken = async (
         success: false, 
         error: "Admin account is disabled" 
       });
+    }
+
+    // ✅ NEW: Check if token was issued before password change
+    if (admin.passwordChangedAt) {
+      const tokenIssuedAt = new Date(decoded.iat * 1000);
+      const passwordChangedAt = new Date(admin.passwordChangedAt);
+
+      if (tokenIssuedAt < passwordChangedAt) {
+        return res.status(401).json({
+          success: false,
+          error: "Password was changed. Please login again.",
+        });
+      }
     }
 
     // ✅ Attach admin to request

@@ -7,6 +7,8 @@ import {
   generateReAuthToken,
   createAdminUser,
   extendAdminSession,
+  changeAdminPassword, 
+  updateAdminProfile,
 } from "../controllers/admin/authController.ts";
 import {
   getDashboardStats,
@@ -200,6 +202,22 @@ router.post(
   adminOperationsRateLimiter,
   requireReAuth(),
   extendAdminSession
+);
+
+// Change admin password (requires re-auth)
+router.post(
+  "/auth/change-password",
+  adminOperationsRateLimiter,
+  requireReAuth(),
+  changeAdminPassword
+);
+
+// Update admin profile (requires re-auth)
+router.post(
+  "/auth/update-profile",
+  adminOperationsRateLimiter,
+  requireReAuth(),
+  updateAdminProfile
 );
 
 export default router;
