@@ -9,12 +9,21 @@ export const handleLambdaRendering = async (req: Request, res: Response) => {
   console.log(inputProps);
   try {
     const { renderId, bucketName } = await renderMediaOnLambda({
-      concurrency: 10,
+      concurrency: 5,
+      framesPerLambda: 30, // Sweet spot for short videos
+      chromiumOptions: {
+        disableWebSecurity: true,
+        gl: "angle",
+      },
+      offthreadVideoCacheSizeInBytes: 500000000, // Important for video assets!
+      deleteAfter: "1-day",
       region: "us-east-1",
       functionName: "remotion-render-4-0-377-mem2048mb-disk2048mb-120sec",
-      serveUrl: "https://remotionlambda-useast1-0l1u2rw3fu.s3.us-east-1.amazonaws.com/sites/viral-motion/index.html",
+      serveUrl:
+        "https://remotionlambda-useast1-0l1u2rw3fu.s3.us-east-1.amazonaws.com/sites/viral-motion/index.html",
       composition: "DynamicVideo",
-      codec: format === "mp4" ? "h264" : "h264",
+      codec: "h264",
+      videoBitrate: "4000000", // Good quality without being excessive
       inputProps,
       privacy: "public",
     });
@@ -34,7 +43,7 @@ export const handleLambdaRendering = async (req: Request, res: Response) => {
         region: "us-east-1",
       });
     }
-    console.log("rendering finished!!\nUrl: ", progress.outputFile)
+    console.log("rendering finished!!\nUrl: ", progress.outputFile);
 
     // Return the S3 URL
     res.json({ url: progress.outputFile });
