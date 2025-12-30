@@ -185,7 +185,7 @@ router.delete("/:id", requireAuth, async (req: AuthRequest, res: Response) => {
 
         if (publicId) {
           const result = await cloudinary.uploader.destroy(publicId, {
-            resource_type: "video",
+            resource_type: "image",
           });
 
           console.log("☁️ Cloudinary deletion result:", result);

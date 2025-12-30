@@ -44,6 +44,7 @@ import { handleStripeWebhook } from "./controllers/subscription/webhookControlle
 import adminRoutes from "./routes/admin.ts";
 import analyticsRoutes from "./routes/analytics.ts";
 import promptImprovementRoutes from "./routes/apis/promptImprovement.ts";
+import bunnyRoutes from './routes/apis/bunny.ts';
 
 const app = express();
 
@@ -166,6 +167,8 @@ app.use("/api/prompt-improvement", promptImprovementRoutes);
 
 //new routes
 app.use("/cloudinary", ssToCloudinaryRoutes);
+
+app.use("/api/bunny", bunnyRoutes);
 
 
 app.use((req, res) => {

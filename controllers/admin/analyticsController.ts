@@ -9,6 +9,7 @@ import {
   renders,
 } from "../../db/schema.ts";
 import { sql, count, eq, and, gte, desc, lte } from "drizzle-orm";
+import jwt from 'jsonwebtoken';
 
 // Get dashboard stats
 export const getDashboardStats = async (req: Request, res: Response) => {
