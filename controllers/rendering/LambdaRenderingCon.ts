@@ -7,6 +7,7 @@ import {
 export const handleLambdaRendering = async (req: Request, res: Response) => {
   const { inputProps, format } = req.body;
   console.log(inputProps);
+  console.log(inputProps.config.layers);
   try {
     const { renderId, bucketName } = await renderMediaOnLambda({
       concurrency: 5,
