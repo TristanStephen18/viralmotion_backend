@@ -9,7 +9,7 @@ export const handleLambdaRendering = async (req: Request, res: Response) => {
   console.log(inputProps);
   try {
     const { renderId, bucketName } = await renderMediaOnLambda({
-      concurrency: 5,
+      concurrency: 10,
       region: "us-east-1",
       functionName: "remotion-render-4-0-377-mem2048mb-disk2048mb-120sec",
       serveUrl: "https://remotionlambda-useast1-0l1u2rw3fu.s3.us-east-1.amazonaws.com/sites/viral-motion/index.html",
