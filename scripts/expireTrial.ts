@@ -33,5 +33,5 @@ async function expireFreeTrial(userId: number) {
 }
 
 // Replace with your test user ID
-const userId = 76; // ⬅️ CHANGE THIS
+const userId = 96; // ⬅️ CHANGE THIS
 expireFreeTrial(userId);
