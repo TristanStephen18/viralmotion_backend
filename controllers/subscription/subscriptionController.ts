@@ -1,5 +1,5 @@
 import type { Request, Response } from "express";
-import { stripe, STRIPE_CONFIG } from "../../config/stripe.ts";
+import { stripe, STRIPE_CONFIG, getPriceId } from "../../config/stripe.ts";
 import { db } from "../../db/client.ts";
 import { users, subscriptions } from "../../db/schema.ts";
 import { eq, and, desc, sql } from "drizzle-orm";
@@ -149,15 +149,25 @@ async function getPaidSubscription(userId: number) {
   );
 }
 
-// 1. CREATE CHECKOUT SESSION - NO TRIAL (user already had free trial)
+// ✅ UPDATED: Accept billingInterval parameter
 export const createCheckoutSession = async (
   req: AuthRequest,
   res: Response
 ) => {
   try {
     const userId = req.user?.userId;
+    const { billingInterval = 'monthly' } = req.body; // ✅ NEW: Get interval from request
+
     if (!userId) {
       return res.status(401).json({ success: false, error: "Unauthorized" });
+    }
+
+    // Validate billing interval
+    if (billingInterval !== 'monthly' && billingInterval !== 'yearly') {
+      return res.status(400).json({ 
+        success: false, 
+        error: "Invalid billing interval" 
+      });
     }
 
     const [user] = await db.select().from(users).where(eq(users.id, userId));
@@ -188,19 +198,24 @@ export const createCheckoutSession = async (
         .where(eq(users.id, userId));
     }
 
-    // ✅ NO TRIAL - User already had 7-day free trial
+    // ✅ Get the correct price ID based on interval
+    const priceId = getPriceId(billingInterval);
+
     const session = await stripe.checkout.sessions.create({
       customer: customerId,
       mode: "subscription",
       payment_method_types: ["card"],
       line_items: [
         {
-          price: STRIPE_CONFIG.priceId,
+          price: priceId, // ✅ Use selected price
           quantity: 1,
         },
       ],
       subscription_data: {
-        metadata: { userId: user.id.toString() },
+        metadata: { 
+          userId: user.id.toString(),
+          billingInterval, // ✅ Store interval in metadata
+        },
       },
       success_url: `${
         process.env.CLIENT_URL || process.env.FRONTEND_URL
@@ -208,11 +223,14 @@ export const createCheckoutSession = async (
       cancel_url: `${
         process.env.CLIENT_URL || process.env.FRONTEND_URL
       }/pricing`,
-      metadata: { userId: user.id.toString() },
+      metadata: { 
+        userId: user.id.toString(),
+        billingInterval, // ✅ Store interval
+      },
     });
 
     console.log(
-      `✅ Checkout session created for user ${userId} - NO TRIAL (already had free trial)`
+      `✅ Checkout session created for user ${userId} - ${billingInterval} plan`
     );
 
     res.json({ success: true, url: session.url });
@@ -222,7 +240,7 @@ export const createCheckoutSession = async (
   }
 };
 
-// 2. GET SUBSCRIPTION STATUS
+// ✅ UPDATED: Include billing interval in status
 export const getSubscriptionStatus = async (req: Request, res: Response) => {
   try {
     const authUser = (req as any).user;
@@ -242,10 +260,7 @@ export const getSubscriptionStatus = async (req: Request, res: Response) => {
 
     console.log(`📊 Checking subscription status for user ${user.id} (${user.email})`);
 
-    // ✅ Check lifetime access FIRST
     const isLifetime = await hasLifetimeAccess(user.id);
-    
-    console.log(`   - isLifetime: ${isLifetime}`);
     
     if (isLifetime) {
       console.log(`✅ User ${user.id} has lifetime access`);
@@ -255,6 +270,7 @@ export const getSubscriptionStatus = async (req: Request, res: Response) => {
         status: "lifetime",
         trialExpired: false,
         isLifetime: true,
+        billingInterval: null, // ✅ No billing for lifetime
       });
     }
 
@@ -273,37 +289,17 @@ export const getSubscriptionStatus = async (req: Request, res: Response) => {
     let trialExpired = false;
 
     if (subscription) {
-      console.log(`📊 Found subscription for user ${user.id}:`, {
-        status: subscription.status,
-        trialEnd: subscription.trialEnd,
-        currentPeriodEnd: subscription.currentPeriodEnd,
-      });
-
       if (subscription.status === "free_trial") {
         const trialEnd = new Date(
           subscription.trialEnd || subscription.currentPeriodEnd
         );
         trialExpired = now > trialEnd;
         hasSubscription = !trialExpired;
-
-        console.log(`🆓 Free trial status:`, {
-          trialEnd: trialEnd.toISOString(),
-          now: now.toISOString(),
-          expired: trialExpired,
-          hasAccess: hasSubscription,
-        });
       } else {
         hasSubscription =
           subscription.status === "active" ||
           subscription.status === "trialing";
-
-        console.log(`💳 Paid subscription status:`, {
-          status: subscription.status,
-          hasAccess: hasSubscription,
-        });
       }
-    } else {
-      console.log(`❌ No subscription found for user ${user.id}`);
     }
 
     res.json({
@@ -312,6 +308,7 @@ export const getSubscriptionStatus = async (req: Request, res: Response) => {
       status: subscription?.status || null,
       trialExpired,
       isLifetime: false,
+      billingInterval: subscription?.billingInterval || null, // ✅ Include interval
     });
   } catch (error: any) {
     console.error("❌ Get subscription status error:", error);
@@ -490,10 +487,12 @@ export const reactivateSubscription = async (
   }
 };
 
-// 7. CREATE SETUP INTENT FOR EMBEDDED PAYMENT FORM
+// ✅ UPDATED: Create setup intent with billing interval
 export const createSetupIntent = async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.user?.userId;
+    const { billingInterval = 'monthly' } = req.body; // ✅ NEW
+
     if (!userId) {
       return res.status(401).json({ success: false, error: "Unauthorized" });
     }
@@ -529,16 +528,20 @@ export const createSetupIntent = async (req: AuthRequest, res: Response) => {
     const setupIntent = await stripe.setupIntents.create({
       customer: customerId,
       payment_method_types: ["card"],
-      metadata: { userId: user.id.toString() },
+      metadata: { 
+        userId: user.id.toString(),
+        billingInterval, // ✅ Store interval
+      },
     });
 
-    console.log(`✅ Setup intent created for user ${userId}`);
+    console.log(`✅ Setup intent created for user ${userId} - ${billingInterval} plan`);
 
     res.json({
       success: true,
       clientSecret: setupIntent.client_secret,
       customerId: customerId,
       publishableKey: STRIPE_CONFIG.publishableKey,
+      billingInterval, // ✅ Send back to frontend
     });
   } catch (error: any) {
     console.error("❌ Create setup intent error:", error);
@@ -546,11 +549,12 @@ export const createSetupIntent = async (req: AuthRequest, res: Response) => {
   }
 };
 
-// 8. CONFIRM SUBSCRIPTION - NO TRIAL (user already had free trial)
+// ✅ UPDATED: Confirm subscription with billing interval
+// ✅ UPDATED: Confirm subscription with billing interval
 export const confirmSubscription = async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.user?.userId;
-    const { paymentMethodId } = req.body;
+    const { paymentMethodId, billingInterval = 'monthly' } = req.body;
 
     if (!userId) {
       return res.status(401).json({ success: false, error: "Unauthorized" });
@@ -570,10 +574,10 @@ export const confirmSubscription = async (req: AuthRequest, res: Response) => {
     }
 
     console.log(
-      `📝 Confirming subscription for user ${userId} - NO TRIAL (already had free trial)...`
+      `📝 Confirming ${billingInterval} subscription for user ${userId}...`
     );
 
-    // Check if user has existing free trial
+    // ✅ NEW: Check for active free trial
     const [existingFreeTrial] = await db
       .select()
       .from(subscriptions)
@@ -584,6 +588,15 @@ export const confirmSubscription = async (req: AuthRequest, res: Response) => {
         )
       )
       .limit(1);
+
+    const now = new Date();
+    const hasActiveTrial = 
+      existingFreeTrial?.trialEnd && 
+      new Date(existingFreeTrial.trialEnd) > now;
+
+    if (hasActiveTrial) {
+      console.log(`🎁 User has active free trial until ${existingFreeTrial.trialEnd}`);
+    }
 
     // Attach payment method
     await stripe.paymentMethods.attach(paymentMethodId, {
@@ -596,48 +609,48 @@ export const confirmSubscription = async (req: AuthRequest, res: Response) => {
       },
     });
 
-    console.log(`💳 Payment method attached to customer`);
+    // ✅ Get correct price ID
+    const priceId = getPriceId(billingInterval);
 
-    
-    // ✅ Create subscription WITHOUT trial - bill immediately
-    const subscription = await stripe.subscriptions.create({
+    // ✅ NEW: Build subscription params with optional trial preservation
+    const subscriptionParams: any = {
       customer: user.stripeCustomerId,
-      items: [{ price: STRIPE_CONFIG.priceId }],
+      items: [{ price: priceId }],
       payment_settings: {
         payment_method_types: ["card"],
         save_default_payment_method: "on_subscription",
       },
       expand: ["latest_invoice.payment_intent"],
-      metadata: { userId: user.id.toString() },
-    });
+      metadata: { 
+        userId: user.id.toString(),
+        billingInterval,
+      },
+    };
 
-    // ✅ Type cast to access all properties
+    // ✅ CRITICAL FIX: If user has active trial, preserve it instead of charging now
+    if (hasActiveTrial && existingFreeTrial?.trialEnd) {
+      const trialEndTimestamp = Math.floor(
+        new Date(existingFreeTrial.trialEnd).getTime() / 1000
+      );
+      subscriptionParams.trial_end = trialEndTimestamp;
+      
+      console.log(`✅ Preserving trial - will charge on ${existingFreeTrial.trialEnd}`);
+    }
+
+    // Create subscription
+    const subscription = await stripe.subscriptions.create(subscriptionParams);
+
     const subData = subscription as any;
-
-    // ✅ FIXED: Extract period dates from items.data[0]
     const subscriptionItem = subData.items?.data?.[0];
 
-    console.log(`✅ Stripe subscription created: ${subscription.id}`);
-    console.log(`   Status: ${subscription.status}`);
-    console.log(`   Subscription item:`, subscriptionItem);
-
-    // ✅ Get period dates from subscription item, fallback to billing_cycle_anchor
     let periodStart =
       subscriptionItem?.current_period_start ||
       subData.billing_cycle_anchor ||
       subData.created;
     let periodEnd = subscriptionItem?.current_period_end;
 
-    console.log(`   Period start (raw): ${periodStart}`);
-    console.log(`   Period end (raw): ${periodEnd}`);
-
-    // ✅ Validate dates before conversion
     if (!periodStart || !periodEnd) {
       console.error(`❌ Missing period timestamps from Stripe`);
-      console.error(
-        `   Full subscription:`,
-        JSON.stringify(subscription, null, 2)
-      );
       return res.status(500).json({
         success: false,
         error: "Invalid subscription data from Stripe",
@@ -654,7 +667,6 @@ export const confirmSubscription = async (req: AuthRequest, res: Response) => {
     const currentPeriodStart = toDate(periodStart);
     const currentPeriodEnd = toDate(periodEnd);
 
-    // Validate Date objects
     if (
       !currentPeriodStart ||
       !currentPeriodEnd ||
@@ -662,87 +674,74 @@ export const confirmSubscription = async (req: AuthRequest, res: Response) => {
       isNaN(currentPeriodEnd.getTime())
     ) {
       console.error(`❌ Failed to convert timestamps to valid dates`);
-      console.error(`   Start: ${periodStart} -> ${currentPeriodStart}`);
-      console.error(`   End: ${periodEnd} -> ${currentPeriodEnd}`);
       return res.status(500).json({
         success: false,
         error: "Failed to process subscription dates",
       });
     }
 
-    console.log(`📅 Converted dates:`);
-    console.log(`   Start: ${currentPeriodStart.toISOString()}`);
-    console.log(`   End: ${currentPeriodEnd.toISOString()}`);
-
-    // ✅ Wait 2 seconds for webhook to process
-    console.log(`⏳ Waiting for webhook to process...`);
+    // Wait for webhook
     await new Promise((resolve) => setTimeout(resolve, 2000));
 
-    // Check if webhook already created/updated the subscription
     const [webhookCreated] = await db
       .select()
       .from(subscriptions)
       .where(eq(subscriptions.stripeSubscriptionId, subscription.id));
 
     if (webhookCreated) {
-      console.log(
-        `✅ Webhook already processed subscription, using existing record`
-      );
-
       return res.json({
         success: true,
         subscription: {
           id: subscription.id,
           status: subscription.status,
           currentPeriodEnd: currentPeriodEnd.toISOString(),
+          billingInterval,
         },
       });
     }
 
-    // Webhook hasn't processed yet, update/create ourselves
+    // Update/create subscription
     if (existingFreeTrial) {
-      console.log(`🔄 Converting free trial to paid subscription (API)`);
+      // ✅ CRITICAL: If trial active and subscription is trialing, keep trial status
+      const finalStatus = hasActiveTrial && subscription.status === "trialing"
+        ? "free_trial" // Keep free_trial status
+        : subscription.status as any;
 
       await db
         .update(subscriptions)
         .set({
           stripeSubscriptionId: subscription.id,
           stripeCustomerId: user.stripeCustomerId,
-          stripePriceId: STRIPE_CONFIG.priceId,
-          status: subscription.status as any,
+          stripePriceId: priceId,
+          billingInterval,
+          status: finalStatus, // ✅ Preserve free_trial if still active
           plan: "pro",
           currentPeriodStart,
           currentPeriodEnd,
-          trialStart: null,
-          trialEnd: null,
+          // ✅ Keep trial dates if trial is active
+          trialStart: hasActiveTrial ? existingFreeTrial.trialStart : null,
+          trialEnd: hasActiveTrial ? existingFreeTrial.trialEnd : null,
           updatedAt: new Date(),
         })
         .where(eq(subscriptions.id, existingFreeTrial.id));
-
-      console.log(`✅ Free trial converted to paid subscription`);
+        
+      console.log(`✅ Updated subscription - status: ${finalStatus}`);
     } else {
-      console.log(`✨ Creating new paid subscription (API)`);
-
       await db.insert(subscriptions).values({
         userId: user.id,
         stripeSubscriptionId: subscription.id,
         stripeCustomerId: user.stripeCustomerId,
-        stripePriceId: STRIPE_CONFIG.priceId,
+        stripePriceId: priceId,
+        billingInterval,
         status: subscription.status as any,
         plan: "pro",
         currentPeriodStart,
         currentPeriodEnd,
         cancelAtPeriodEnd: false,
-        trialStart: null,
-        trialEnd: null,
+        trialStart: toDate(subData.trial_start),
+        trialEnd: toDate(subData.trial_end),
       });
-
-      console.log(`✅ Subscription created in database`);
     }
-
-    console.log(
-      `✅ Subscription ${subscription.id} confirmed for user ${userId}`
-    );
 
     res.json({
       success: true,
@@ -750,11 +749,11 @@ export const confirmSubscription = async (req: AuthRequest, res: Response) => {
         id: subscription.id,
         status: subscription.status,
         currentPeriodEnd: currentPeriodEnd.toISOString(),
+        billingInterval,
       },
     });
   } catch (error: any) {
     console.error("❌ Confirm subscription error:", error.message);
-    console.error("   Stack:", error.stack);
     res.status(500).json({ success: false, error: error.message });
   }
 };

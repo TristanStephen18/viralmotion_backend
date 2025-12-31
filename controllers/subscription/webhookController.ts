@@ -59,6 +59,13 @@ export const handleStripeWebhook = async (req: Request, res: Response) => {
           );
           const subData = stripeSubscription as any;
 
+          // ✅ NEW: Determine billing interval
+          const stripePriceId = stripeSubscription.items.data[0].price.id;
+          const billingInterval: "monthly" | "yearly" =
+            stripePriceId === STRIPE_CONFIG.yearlyPriceId
+              ? "yearly"
+              : "monthly";
+
           const periodStart =
             subData.status === "trialing" && subData.trial_start
               ? subData.trial_start
@@ -90,6 +97,7 @@ export const handleStripeWebhook = async (req: Request, res: Response) => {
                 ? stripeSubscription.customer
                 : stripeSubscription.customer?.id || "",
             stripePriceId: stripeSubscription.items.data[0].price.id,
+            billingInterval,
             status: stripeSubscription.status as any,
             plan: "pro",
             currentPeriodStart: periodStartDate,
@@ -99,7 +107,9 @@ export const handleStripeWebhook = async (req: Request, res: Response) => {
             trialEnd: safeTimestampToDate(subData.trial_end),
           });
 
-          console.log(`✅ Subscription created for user ${userId}`);
+          console.log(
+            `✅ ${billingInterval} subscription created for user ${userId}`
+          );
         }
         break;
       }
@@ -125,16 +135,14 @@ export const handleStripeWebhook = async (req: Request, res: Response) => {
           console.log(`   User ID: ${userId}`);
           console.log(`   Status: ${stripeSubscription.status}`);
 
-          // ✅ FIXED: Extract period dates from items.data[0]
-          const subscriptionItem = subData.items?.data?.[0];
-          let periodStartRaw =
-            subscriptionItem?.current_period_start ||
-            subData.billing_cycle_anchor ||
-            subData.created;
-          let periodEndRaw = subscriptionItem?.current_period_end;
+          // ✅ NEW: Determine billing interval from price ID
+          const stripePriceId = stripeSubscription.items.data[0].price.id;
+          const billingInterval: "monthly" | "yearly" =
+            stripePriceId === STRIPE_CONFIG.yearlyPriceId
+              ? "yearly"
+              : "monthly";
 
-          console.log(`   Period start (raw): ${periodStartRaw}`);
-          console.log(`   Period end (raw): ${periodEndRaw}`);
+          console.log(`   Billing interval: ${billingInterval}`);
 
           // Check if already exists in database
           const [existing] = await db
@@ -162,6 +170,63 @@ export const handleStripeWebhook = async (req: Request, res: Response) => {
               )
             )
             .limit(1);
+
+          // ✅ CRITICAL FIX: Check if payment failed during active trial
+          const paymentFailed = stripeSubscription.status === "incomplete";
+          const now = new Date();
+          const hadActiveTrial =
+            existingFreeTrial?.trialEnd &&
+            new Date(existingFreeTrial.trialEnd) > now;
+
+          if (paymentFailed && hadActiveTrial) {
+            console.log(
+              `⚠️ Payment failed for user ${userId} with active trial`
+            );
+            console.log(
+              `✅ PRESERVING free trial until ${existingFreeTrial.trialEnd}`
+            );
+
+            // Store failed subscription ID but KEEP the trial active
+            await db
+              .update(subscriptions)
+              .set({
+                stripeSubscriptionId: stripeSubscription.id,
+                stripeCustomerId:
+                  typeof stripeSubscription.customer === "string"
+                    ? stripeSubscription.customer
+                    : stripeSubscription.customer?.id || "",
+                stripePriceId: stripePriceId,
+                billingInterval: billingInterval,
+                // ✅ FIXED: Safe metadata spreading
+                metadata: {
+                  ...(existingFreeTrial.metadata &&
+                  typeof existingFreeTrial.metadata === "object"
+                    ? existingFreeTrial.metadata
+                    : {}),
+                  failedPaymentAttempt: {
+                    subscriptionId: stripeSubscription.id,
+                    attemptedAt: new Date().toISOString(),
+                    reason: "payment_failed_during_trial",
+                  },
+                } as any,
+                updatedAt: new Date(),
+              })
+              .where(eq(subscriptions.id, existingFreeTrial.id));
+
+            console.log(`✅ Trial preserved - user can still access dashboard`);
+            break;
+          }
+
+          // ✅ FIXED: Extract period dates from items.data[0]
+          const subscriptionItem = subData.items?.data?.[0];
+          let periodStartRaw =
+            subscriptionItem?.current_period_start ||
+            subData.billing_cycle_anchor ||
+            subData.created;
+          let periodEndRaw = subscriptionItem?.current_period_end;
+
+          console.log(`   Period start (raw): ${periodStartRaw}`);
+          console.log(`   Period end (raw): ${periodEndRaw}`);
 
           // ✅ Convert dates
           let periodStart: Date | null = null;
@@ -202,13 +267,15 @@ export const handleStripeWebhook = async (req: Request, res: Response) => {
           if (existingFreeTrial) {
             // ✅ Check if it's a lifetime account first
             if (existingFreeTrial.isLifetime) {
-              console.log(`⏭️ Ignoring subscription creation for lifetime user ${userId}`);
+              console.log(
+                `⏭️ Ignoring subscription creation for lifetime user ${userId}`
+              );
               break;
             }
 
-            // Update existing free trial record
+            // Update existing free trial record (payment succeeded)
             console.log(
-              `🔄 Converting free trial to paid subscription (webhook)`
+              `🔄 Converting free trial to paid ${billingInterval} subscription (webhook)`
             );
 
             await db
@@ -220,6 +287,7 @@ export const handleStripeWebhook = async (req: Request, res: Response) => {
                     ? stripeSubscription.customer
                     : stripeSubscription.customer?.id || "",
                 stripePriceId: stripeSubscription.items.data[0].price.id,
+                billingInterval,
                 status: stripeSubscription.status as any,
                 plan: "pro",
                 currentPeriodStart: periodStart,
@@ -235,10 +303,14 @@ export const handleStripeWebhook = async (req: Request, res: Response) => {
               })
               .where(eq(subscriptions.id, existingFreeTrial.id));
 
-            console.log(`✅ Free trial converted to paid subscription`);
+            console.log(
+              `✅ Free trial converted to paid ${billingInterval} subscription`
+            );
           } else {
             // Create new subscription record
-            console.log(`✨ Creating new subscription record (webhook)`);
+            console.log(
+              `✨ Creating new ${billingInterval} subscription record (webhook)`
+            );
 
             await db.insert(subscriptions).values({
               userId: parseInt(userId, 10),
@@ -248,6 +320,7 @@ export const handleStripeWebhook = async (req: Request, res: Response) => {
                   ? stripeSubscription.customer
                   : stripeSubscription.customer?.id || "",
               stripePriceId: stripeSubscription.items.data[0].price.id,
+              billingInterval,
               status: stripeSubscription.status as any,
               plan: "pro",
               currentPeriodStart: periodStart,
@@ -261,7 +334,9 @@ export const handleStripeWebhook = async (req: Request, res: Response) => {
                 : null,
             });
 
-            console.log(`✅ Subscription created in database`);
+            console.log(
+              `✅ ${billingInterval} subscription created in database`
+            );
           }
         } catch (createError: any) {
           console.error(
@@ -296,7 +371,9 @@ export const handleStripeWebhook = async (req: Request, res: Response) => {
 
         // ✅ CRITICAL: Skip updates for lifetime users
         if (existingSubscription.isLifetime) {
-          console.log(`⏭️ Ignoring webhook for lifetime user ${existingSubscription.userId} - subscription ${stripeSubscription.id}`);
+          console.log(
+            `⏭️ Ignoring webhook for lifetime user ${existingSubscription.userId} - subscription ${stripeSubscription.id}`
+          );
           break;
         }
 
@@ -380,7 +457,9 @@ export const handleStripeWebhook = async (req: Request, res: Response) => {
         if (existingSubscription) {
           // ✅ CRITICAL: Skip updates for lifetime users
           if (existingSubscription.isLifetime) {
-            console.log(`⏭️ Ignoring deletion webhook for lifetime user ${existingSubscription.userId} - subscription ${stripeSubscription.id}`);
+            console.log(
+              `⏭️ Ignoring deletion webhook for lifetime user ${existingSubscription.userId} - subscription ${stripeSubscription.id}`
+            );
             break;
           }
 
@@ -412,7 +491,9 @@ export const handleStripeWebhook = async (req: Request, res: Response) => {
           if (existingSubscription) {
             // ✅ Skip for lifetime users
             if (existingSubscription.isLifetime) {
-              console.log(`⏭️ Ignoring payment webhook for lifetime user ${existingSubscription.userId}`);
+              console.log(
+                `⏭️ Ignoring payment webhook for lifetime user ${existingSubscription.userId}`
+              );
               break;
             }
 
@@ -446,7 +527,9 @@ export const handleStripeWebhook = async (req: Request, res: Response) => {
           if (existingSubscription) {
             // ✅ Skip for lifetime users
             if (existingSubscription.isLifetime) {
-              console.log(`⏭️ Ignoring payment failure webhook for lifetime user ${existingSubscription.userId}`);
+              console.log(
+                `⏭️ Ignoring payment failure webhook for lifetime user ${existingSubscription.userId}`
+              );
               break;
             }
 
