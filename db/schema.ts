@@ -213,6 +213,7 @@ export const blacklistedTokens = pgTable(
     tokenIdx: index("blacklisted_tokens_token_idx").on(table.token),
   })
 );
+
 export const subscriptions = pgTable(
   "subscriptions",
   {
@@ -227,6 +228,11 @@ export const subscriptions = pgTable(
     }).unique(),
     stripeCustomerId: varchar("stripe_customer_id", { length: 255 }),
     stripePriceId: varchar("stripe_price_id", { length: 255 }),
+
+    billingInterval: varchar("billing_interval", { length: 20 })
+      .$type<"monthly" | "yearly">()
+      .default("monthly")
+      .notNull(),
 
     // ✅ Lifetime/Company Account Fields
     isLifetime: boolean("is_lifetime").default(false).notNull(),
