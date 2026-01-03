@@ -1,5 +1,5 @@
 import type { Response } from "express";
-import { ACCESS_TOKEN_COOKIE, COOKIE_OPTIONS } from "../../config.ts";
+import { ACCESS_TOKEN_COOKIE, COOKIE_OPTIONS } from "../routes/database/config.ts";
 
 export const setAccessTokenCookie = (res: Response, token: string) => {
   res.cookie("accessToken", token, ACCESS_TOKEN_COOKIE);

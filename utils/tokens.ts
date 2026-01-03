@@ -7,7 +7,7 @@ import {
   JWT_REFRESH_SECRET,
   JWT_EXPIRES_IN,
   JWT_REFRESH_EXPIRES_IN,
-} from "../../config.ts";
+} from "../routes/database/config.ts";
 
 export interface TokenPayload {
   userId: number;

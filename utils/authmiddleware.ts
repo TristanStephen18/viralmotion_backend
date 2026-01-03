@@ -1,6 +1,6 @@
 import type { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
-import { JWT_SECRET } from "../../config.ts";
+import { JWT_SECRET } from "../routes/database/config.ts";
 import { isTokenBlacklisted } from "./tokens.ts";
 import { db } from "../db/client.ts";
 import { users } from "../db/schema.ts";

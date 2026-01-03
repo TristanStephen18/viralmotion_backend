@@ -1,5 +1,5 @@
 import bcrypt from "bcrypt";
-import { BCRYPT_ROUNDS } from "../../config.ts";
+import { BCRYPT_ROUNDS } from "../routes/database/config.ts";
 
 export const hashPassword = async (password: string): Promise<string> => {
   return bcrypt.hash(password, BCRYPT_ROUNDS);
