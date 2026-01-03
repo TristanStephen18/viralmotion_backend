@@ -8,6 +8,7 @@ import passport from "passport";
 import { generalRateLimiter, speedLimiter } from "./middleware/rateLimiter.ts";
 import { securityHeaders } from "./middleware/securityHeaders.ts";
 import { cleanupExpiredTokens } from "./utils/tokens.ts";
+import proxyRoutes from './routes/proxy.ts';
 
 // Import routes
 import airoutes from "./routes/apis/gemini.ts";
@@ -164,6 +165,7 @@ app.use("/api/subscription", subscriptionRoutes);
 app.use("/admin", adminRoutes);
 app.use("/api/analytics", analyticsRoutes);
 app.use("/api/prompt-improvement", promptImprovementRoutes);
+app.use('/api/proxy', proxyRoutes);
 
 //new routes
 app.use("/cloudinary", ssToCloudinaryRoutes);
