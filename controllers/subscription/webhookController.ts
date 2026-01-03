@@ -1,11 +1,10 @@
 import type { Request, Response } from "express";
 import Stripe from "stripe";
-import { stripe, STRIPE_CONFIG } from "../../config/stripe.ts";
+import { stripe, STRIPE_CONFIG, getPlanFromPriceId } from "../../config/stripe.ts";
 import { db } from "../../db/client.ts";
 import { subscriptions } from "../../db/schema.ts";
-import { eq, and } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 
-// Helper function to safely convert timestamp to Date
 function safeTimestampToDate(timestamp: any): Date | null {
   if (!timestamp) return null;
 
@@ -59,22 +58,14 @@ export const handleStripeWebhook = async (req: Request, res: Response) => {
           );
           const subData = stripeSubscription as any;
 
-          // ✅ NEW: Determine billing interval
+          // ✅ NEW: Determine plan from price ID
           const stripePriceId = stripeSubscription.items.data[0].price.id;
-          const billingInterval: "monthly" | "yearly" =
-            stripePriceId === STRIPE_CONFIG.yearlyPriceId
-              ? "yearly"
-              : "monthly";
+          const plan = getPlanFromPriceId(stripePriceId) || 'pro';
 
           const periodStart =
-            subData.status === "trialing" && subData.trial_start
-              ? subData.trial_start
-              : subData.current_period_start || subData.trial_start;
+            subData.current_period_start || subData.created;
 
-          const periodEnd =
-            subData.status === "trialing" && subData.trial_end
-              ? subData.trial_end
-              : subData.current_period_end || subData.trial_end;
+          const periodEnd = subData.current_period_end;
 
           if (!periodStart || !periodEnd) {
             console.error("❌ Cannot determine period dates for subscription");
@@ -97,24 +88,23 @@ export const handleStripeWebhook = async (req: Request, res: Response) => {
                 ? stripeSubscription.customer
                 : stripeSubscription.customer?.id || "",
             stripePriceId: stripeSubscription.items.data[0].price.id,
-            billingInterval,
             status: stripeSubscription.status as any,
-            plan: "pro",
+            plan: plan, // ✅ Store plan
             currentPeriodStart: periodStartDate,
             currentPeriodEnd: periodEndDate,
             cancelAtPeriodEnd: subData.cancel_at_period_end || false,
-            trialStart: safeTimestampToDate(subData.trial_start),
-            trialEnd: safeTimestampToDate(subData.trial_end),
+            trialStart: null,
+            trialEnd: null,
           });
 
           console.log(
-            `✅ ${billingInterval} subscription created for user ${userId}`
+            `✅ ${plan} subscription created for user ${userId}`
           );
         }
         break;
       }
 
-      // SUBSCRIPTION CREATED (handles direct API subscriptions)
+      // SUBSCRIPTION CREATED
       case "customer.subscription.created": {
         try {
           const stripeSubscription = event.data.object as Stripe.Subscription;
@@ -124,7 +114,6 @@ export const handleStripeWebhook = async (req: Request, res: Response) => {
             `📦 Subscription created in Stripe: ${stripeSubscription.id}`
           );
 
-          // Get userId from metadata
           const userId = subData.metadata?.userId;
 
           if (!userId) {
@@ -135,14 +124,11 @@ export const handleStripeWebhook = async (req: Request, res: Response) => {
           console.log(`   User ID: ${userId}`);
           console.log(`   Status: ${stripeSubscription.status}`);
 
-          // ✅ NEW: Determine billing interval from price ID
+          // ✅ NEW: Determine plan from price ID
           const stripePriceId = stripeSubscription.items.data[0].price.id;
-          const billingInterval: "monthly" | "yearly" =
-            stripePriceId === STRIPE_CONFIG.yearlyPriceId
-              ? "yearly"
-              : "monthly";
+          const plan = getPlanFromPriceId(stripePriceId) || 'pro';
 
-          console.log(`   Billing interval: ${billingInterval}`);
+          console.log(`   Plan: ${plan}`);
 
           // Check if already exists in database
           const [existing] = await db
@@ -159,65 +145,7 @@ export const handleStripeWebhook = async (req: Request, res: Response) => {
             break;
           }
 
-          // Check for existing free trial to update
-          const [existingFreeTrial] = await db
-            .select()
-            .from(subscriptions)
-            .where(
-              and(
-                eq(subscriptions.userId, parseInt(userId, 10)),
-                eq(subscriptions.status, "free_trial")
-              )
-            )
-            .limit(1);
-
-          // ✅ CRITICAL FIX: Check if payment failed during active trial
-          const paymentFailed = stripeSubscription.status === "incomplete";
-          const now = new Date();
-          const hadActiveTrial =
-            existingFreeTrial?.trialEnd &&
-            new Date(existingFreeTrial.trialEnd) > now;
-
-          if (paymentFailed && hadActiveTrial) {
-            console.log(
-              `⚠️ Payment failed for user ${userId} with active trial`
-            );
-            console.log(
-              `✅ PRESERVING free trial until ${existingFreeTrial.trialEnd}`
-            );
-
-            // Store failed subscription ID but KEEP the trial active
-            await db
-              .update(subscriptions)
-              .set({
-                stripeSubscriptionId: stripeSubscription.id,
-                stripeCustomerId:
-                  typeof stripeSubscription.customer === "string"
-                    ? stripeSubscription.customer
-                    : stripeSubscription.customer?.id || "",
-                stripePriceId: stripePriceId,
-                billingInterval: billingInterval,
-                // ✅ FIXED: Safe metadata spreading
-                metadata: {
-                  ...(existingFreeTrial.metadata &&
-                  typeof existingFreeTrial.metadata === "object"
-                    ? existingFreeTrial.metadata
-                    : {}),
-                  failedPaymentAttempt: {
-                    subscriptionId: stripeSubscription.id,
-                    attemptedAt: new Date().toISOString(),
-                    reason: "payment_failed_during_trial",
-                  },
-                } as any,
-                updatedAt: new Date(),
-              })
-              .where(eq(subscriptions.id, existingFreeTrial.id));
-
-            console.log(`✅ Trial preserved - user can still access dashboard`);
-            break;
-          }
-
-          // ✅ FIXED: Extract period dates from items.data[0]
+          // Extract period dates
           const subscriptionItem = subData.items?.data?.[0];
           let periodStartRaw =
             subscriptionItem?.current_period_start ||
@@ -228,7 +156,6 @@ export const handleStripeWebhook = async (req: Request, res: Response) => {
           console.log(`   Period start (raw): ${periodStartRaw}`);
           console.log(`   Period end (raw): ${periodEndRaw}`);
 
-          // ✅ Convert dates
           let periodStart: Date | null = null;
           let periodEnd: Date | null = null;
 
@@ -264,80 +191,31 @@ export const handleStripeWebhook = async (req: Request, res: Response) => {
             break;
           }
 
-          if (existingFreeTrial) {
-            // ✅ Check if it's a lifetime account first
-            if (existingFreeTrial.isLifetime) {
-              console.log(
-                `⏭️ Ignoring subscription creation for lifetime user ${userId}`
-              );
-              break;
-            }
+          // Create new subscription record
+          console.log(
+            `✨ Creating new ${plan} subscription record (webhook)`
+          );
 
-            // Update existing free trial record (payment succeeded)
-            console.log(
-              `🔄 Converting free trial to paid ${billingInterval} subscription (webhook)`
-            );
+          await db.insert(subscriptions).values({
+            userId: parseInt(userId, 10),
+            stripeSubscriptionId: stripeSubscription.id,
+            stripeCustomerId:
+              typeof stripeSubscription.customer === "string"
+                ? stripeSubscription.customer
+                : stripeSubscription.customer?.id || "",
+            stripePriceId: stripeSubscription.items.data[0].price.id,
+            status: stripeSubscription.status as any,
+            plan: plan, // ✅ Store plan
+            currentPeriodStart: periodStart,
+            currentPeriodEnd: periodEnd,
+            cancelAtPeriodEnd: subData.cancel_at_period_end || false,
+            trialStart: null,
+            trialEnd: null,
+          });
 
-            await db
-              .update(subscriptions)
-              .set({
-                stripeSubscriptionId: stripeSubscription.id,
-                stripeCustomerId:
-                  typeof stripeSubscription.customer === "string"
-                    ? stripeSubscription.customer
-                    : stripeSubscription.customer?.id || "",
-                stripePriceId: stripeSubscription.items.data[0].price.id,
-                billingInterval,
-                status: stripeSubscription.status as any,
-                plan: "pro",
-                currentPeriodStart: periodStart,
-                currentPeriodEnd: periodEnd,
-                cancelAtPeriodEnd: subData.cancel_at_period_end || false,
-                trialStart: subData.trial_start
-                  ? new Date(Number(subData.trial_start) * 1000)
-                  : null,
-                trialEnd: subData.trial_end
-                  ? new Date(Number(subData.trial_end) * 1000)
-                  : null,
-                updatedAt: new Date(),
-              })
-              .where(eq(subscriptions.id, existingFreeTrial.id));
-
-            console.log(
-              `✅ Free trial converted to paid ${billingInterval} subscription`
-            );
-          } else {
-            // Create new subscription record
-            console.log(
-              `✨ Creating new ${billingInterval} subscription record (webhook)`
-            );
-
-            await db.insert(subscriptions).values({
-              userId: parseInt(userId, 10),
-              stripeSubscriptionId: stripeSubscription.id,
-              stripeCustomerId:
-                typeof stripeSubscription.customer === "string"
-                  ? stripeSubscription.customer
-                  : stripeSubscription.customer?.id || "",
-              stripePriceId: stripeSubscription.items.data[0].price.id,
-              billingInterval,
-              status: stripeSubscription.status as any,
-              plan: "pro",
-              currentPeriodStart: periodStart,
-              currentPeriodEnd: periodEnd,
-              cancelAtPeriodEnd: subData.cancel_at_period_end || false,
-              trialStart: subData.trial_start
-                ? new Date(Number(subData.trial_start) * 1000)
-                : null,
-              trialEnd: subData.trial_end
-                ? new Date(Number(subData.trial_end) * 1000)
-                : null,
-            });
-
-            console.log(
-              `✅ ${billingInterval} subscription created in database`
-            );
-          }
+          console.log(
+            `✅ ${plan} subscription created in database`
+          );
         } catch (createError: any) {
           console.error(
             `❌ Error handling subscription.created:`,
@@ -377,13 +255,13 @@ export const handleStripeWebhook = async (req: Request, res: Response) => {
           break;
         }
 
-        // ✅ Build update object with validated dates
+        // Build update object with validated dates
         const updateData: any = {
           status: stripeSubscription.status as any,
           updatedAt: new Date(),
         };
 
-        // ✅ FIXED: Extract period dates from items.data[0]
+        // Extract period dates from items.data[0]
         const subscriptionItem = subData.items?.data?.[0];
         const periodStartRaw = subscriptionItem?.current_period_start;
         const periodEndRaw = subscriptionItem?.current_period_end;
@@ -417,19 +295,11 @@ export const handleStripeWebhook = async (req: Request, res: Response) => {
           updateData.cancelAtPeriodEnd = Boolean(subData.cancel_at_period_end);
         }
 
-        // ✅ Only set canceledAt if it's a valid timestamp
         const canceledAt = safeTimestampToDate(subData.canceled_at);
         if (canceledAt) {
           updateData.canceledAt = canceledAt;
         } else if (subData.canceled_at === null) {
-          // Explicitly set to null if Stripe sent null
           updateData.canceledAt = null;
-        }
-
-        // Handle trial dates
-        const trialEnd = safeTimestampToDate(subData.trial_end);
-        if (trialEnd) {
-          updateData.trialEnd = trialEnd;
         }
 
         console.log(
@@ -455,7 +325,6 @@ export const handleStripeWebhook = async (req: Request, res: Response) => {
           .where(eq(subscriptions.stripeSubscriptionId, stripeSubscription.id));
 
         if (existingSubscription) {
-          // ✅ CRITICAL: Skip updates for lifetime users
           if (existingSubscription.isLifetime) {
             console.log(
               `⏭️ Ignoring deletion webhook for lifetime user ${existingSubscription.userId} - subscription ${stripeSubscription.id}`
@@ -489,7 +358,6 @@ export const handleStripeWebhook = async (req: Request, res: Response) => {
             .where(eq(subscriptions.stripeSubscriptionId, subscriptionId));
 
           if (existingSubscription) {
-            // ✅ Skip for lifetime users
             if (existingSubscription.isLifetime) {
               console.log(
                 `⏭️ Ignoring payment webhook for lifetime user ${existingSubscription.userId}`
@@ -525,7 +393,6 @@ export const handleStripeWebhook = async (req: Request, res: Response) => {
             .where(eq(subscriptions.stripeSubscriptionId, subscriptionId));
 
           if (existingSubscription) {
-            // ✅ Skip for lifetime users
             if (existingSubscription.isLifetime) {
               console.log(
                 `⏭️ Ignoring payment failure webhook for lifetime user ${existingSubscription.userId}`
@@ -557,7 +424,6 @@ export const handleStripeWebhook = async (req: Request, res: Response) => {
     console.error("   Event type:", event?.type);
     console.error("   Stack:", error.stack);
 
-    // Still return 200 to prevent Stripe retries
     res.status(500).json({ error: error.message });
   }
 };
