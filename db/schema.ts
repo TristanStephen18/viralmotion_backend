@@ -244,9 +244,7 @@ export const subscriptions = pgTable(
     // Rest stays the same...
     status: varchar("status", { length: 50 })
       .$type<
-        | "free_trial"
         | "active"
-        | "trialing"
         | "canceled"
         | "past_due"
         | "incomplete"
@@ -254,8 +252,12 @@ export const subscriptions = pgTable(
         | "lifetime"
         | "company"
       >()
+      .default("active")
       .notNull(),
-    plan: varchar("plan", { length: 50 }).notNull(),
+    plan: varchar("plan", { length: 50 })
+      .$type<"free" | "starter" | "pro" | "team" | "lifetime">()
+      .default("free")
+      .notNull(),
     currentPeriodStart: timestamp("current_period_start").notNull(),
     currentPeriodEnd: timestamp("current_period_end").notNull(),
     cancelAtPeriodEnd: boolean("cancel_at_period_end").default(false).notNull(),
