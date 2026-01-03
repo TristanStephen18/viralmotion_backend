@@ -31,6 +31,7 @@ export const users = pgTable("users", {
   lastLogin: timestamp("last_login"),
   passwordChangedAt: timestamp("password_changed_at"),
   stripeCustomerId: varchar("stripe_customer_id", { length: 255 }).unique(),
+  numberOfLogins: integer("number_of_logins").default(0),
 });
 
 export const templates = pgTable("templates", {
