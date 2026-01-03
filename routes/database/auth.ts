@@ -99,6 +99,7 @@ router.post(
           stripeSubscriptionId: null, // ✅ CHANGED: null instead of ''
           stripeCustomerId: null, // ✅ CHANGED: null instead of ''
           stripePriceId: null, // ✅ CHANGED: null instead of ''
+          billingInterval: "monthly",
           status: "free_trial",
           plan: "free",
           currentPeriodStart: new Date(),
