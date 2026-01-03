@@ -89,32 +89,9 @@ router.post(
         })
         .returning();
 
-      // ✅ CREATE FREE 7-DAY TRIAL AUTOMATICALLY
-      try {
-        const trialEndDate = new Date();
-        trialEndDate.setDate(trialEndDate.getDate() + 7);
-
-        await db.insert(subscriptions).values({
-          userId: newUser.id,
-          stripeSubscriptionId: null, // ✅ CHANGED: null instead of ''
-          stripeCustomerId: null, // ✅ CHANGED: null instead of ''
-          stripePriceId: null, // ✅ CHANGED: null instead of ''
-          billingInterval: "monthly",
-          status: "free_trial",
-          plan: "free",
-          currentPeriodStart: new Date(),
-          currentPeriodEnd: trialEndDate,
-          cancelAtPeriodEnd: false,
-          trialStart: new Date(),
-          trialEnd: trialEndDate,
-        });
-
-        console.log(
-          `✅ Created free 7-day trial for user ${newUser.id} (${email})`
-        );
-      } catch (trialError) {
-        console.error("⚠️ Failed to create free trial:", trialError);
-      }
+      // ❌ REMOVED: Free trial creation
+      // Users start on Free plan with NO subscription record
+      console.log(`✅ New user created: ${newUser.id} (${email}) - Free plan (no subscription)`);
 
       const protocol = req.protocol;
       const host = req.get("host");

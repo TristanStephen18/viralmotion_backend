@@ -53,7 +53,6 @@ passport.use(
           return done(new Error("No email provided by Google"), undefined);
         }
 
-        // ✅ SECURE: Check if user exists
         const [existing] = await db
           .select()
           .from(users)
@@ -62,57 +61,31 @@ passport.use(
         let user;
 
         if (existing) {
-          // ✅ Update last login
           await db
             .update(users)
             .set({ lastLogin: new Date() })
             .where(eq(users.id, existing.id));
           
           user = existing;
-          
           console.log(`✅ Existing Google user logged in: ${email}`);
         } else {
-          // ✅ Create new user
           const [newUser] = await db
             .insert(users)
             .values({
               email,
               name,
               provider: "google",
-              passwordHash: "", // No password for OAuth users
+              passwordHash: "",
               profilePicture: photo,
-              verified: true, // Google accounts are pre-verified
+              verified: true,
             })
             .returning();
           
           user = newUser;
           
-          console.log(`✨ New Google user created: ${email} (ID: ${user.id})`);
-
-          // ✅ NEW: CREATE FREE 7-DAY TRIAL FOR NEW GOOGLE USERS
-          try {
-            const trialEndDate = new Date();
-            trialEndDate.setDate(trialEndDate.getDate() + 7);
-
-            await db.insert(subscriptions).values({
-              userId: user.id,
-              stripeSubscriptionId: null,
-              stripeCustomerId: null,
-              stripePriceId: null,
-              status: "free_trial",
-              plan: "free",
-              currentPeriodStart: new Date(),
-              currentPeriodEnd: trialEndDate,
-              cancelAtPeriodEnd: false,
-              trialStart: new Date(),
-              trialEnd: trialEndDate,
-            });
-
-            console.log(`✅ Created free 7-day trial for Google user ${user.id} (${email})`);
-          } catch (trialError) {
-            console.error("⚠️ Failed to create free trial for Google user:", trialError);
-            // Don't fail the entire OAuth flow if trial creation fails
-          }
+          // ❌ REMOVED: Free trial creation
+          // Users start on Free plan with NO subscription record
+          console.log(`✨ New Google user created: ${email} (ID: ${user.id}) - Free plan (no subscription)`);
         }
 
         return done(null, user);

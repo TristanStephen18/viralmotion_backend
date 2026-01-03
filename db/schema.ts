@@ -295,6 +295,7 @@ export const adminUsers = pgTable(
     lastLogin: timestamp("last_login"),
     passwordChangedAt: timestamp("password_changed_at"),
     active: boolean("active").default(true).notNull(),
+    // passwordChangedAt: timestamp("password_changed_at")
   },
   (table) => ({
     emailIdx: index("admin_users_email_idx").on(table.email),
@@ -362,11 +363,11 @@ export const adminAuditLogs = pgTable(
   (table) => ({
     adminIdIdx: index("admin_audit_logs_admin_id_idx").on(table.adminId),
     actionIdx: index("admin_audit_logs_action_idx").on(table.action),
-    targetTypeIdx: index("admin_audit_logs_target_type_idx").on(table.targetType),
+    targetTypeIdx: index("admin_audit_logs_target_type_idx").on(
+      table.targetType
+    ),
     targetIdIdx: index("admin_audit_logs_target_id_idx").on(table.targetId),
     createdAtIdx: index("admin_audit_logs_created_at_idx").on(table.createdAt),
     statusIdx: index("admin_audit_logs_status_idx").on(table.status),
   })
 );
-
-
