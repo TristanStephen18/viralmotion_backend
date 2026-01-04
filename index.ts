@@ -1,8 +1,11 @@
+
+// server.ts (or index.ts)
 import express from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
 import session from "express-session";
 import passport from "passport";
+// ✅ ADD THIS - Must be first!
 
 // Security middleware
 import { generalRateLimiter, speedLimiter } from "./middleware/rateLimiter.ts";
@@ -38,7 +41,7 @@ import enhanceSpeechRoutes from "./routes/tools/enhanceSpeech.ts";
 import veo3Routes from "./routes/apis/veo3.ts";
 import youtubeRoutes from "./routes/apis/youtube.ts";
 import saveImageRoutes from "./utils/saveImage.ts";
-import imageGenRoutes from "./routes/tools/imageGen.ts";
+import imageGenRoutes from "./routes/tools/imageGen.ts"; // 🍌 Nano Banana routes included here
 import subscriptionRoutes from "./routes/subscription.ts";
 import ssToCloudinaryRoutes from "./utils/screenshotSaver.ts";
 import { handleStripeWebhook } from "./controllers/subscription/webhookController.ts";
@@ -46,10 +49,11 @@ import adminRoutes from "./routes/admin.ts";
 import analyticsRoutes from "./routes/analytics.ts";
 import promptImprovementRoutes from "./routes/apis/promptImprovement.ts";
 import bunnyRoutes from './routes/apis/bunny.ts';
+import cloudinaryRoutes from "./routes/cloudinary.ts";
 
 const app = express();
 
-// required for rate limiting and IP detection
+// Required for rate limiting and IP detection
 if (process.env.NODE_ENV === 'production') {
   app.set('trust proxy', 1); 
 } else {
@@ -72,7 +76,6 @@ const allowedOrigins = [
 app.use(
   cors({
     origin: (origin, callback) => {
-     
       if (!origin) return callback(null, true);
       
       if (allowedOrigins.includes(origin)) {
@@ -94,7 +97,6 @@ app.post(
   express.raw({ type: 'application/json' }),
   handleStripeWebhook
 );
-
 
 // Rate limiting (general API protection)
 app.use(generalRateLimiter);
@@ -123,7 +125,7 @@ app.use(
 app.use(passport.initialize());
 app.use(passport.session());
 
-//  Health check endpoint
+// Health check endpoint
 app.get("/health", (req, res) => {
   res.json({ 
     status: "healthy", 
@@ -160,19 +162,21 @@ app.use("/api/tools/speech-enhancement", enhanceSpeechRoutes);
 app.use("/api/veo3-video-generation", veo3Routes);
 app.use("/api/youtube-v2", youtubeRoutes); 
 app.use('/api/tools/save-image', saveImageRoutes);
-app.use("/api/image-generation", imageGenRoutes);
+app.use("/api/image-generation", imageGenRoutes); // 🍌 Includes Nano Banana routes
 app.use("/api/subscription", subscriptionRoutes);
 app.use("/admin", adminRoutes);
 app.use("/api/analytics", analyticsRoutes);
 app.use("/api/prompt-improvement", promptImprovementRoutes);
 app.use('/api/proxy', proxyRoutes);
 
-//new routes
+// Cloudinary routes
 app.use("/cloudinary", ssToCloudinaryRoutes);
+app.use("/cloudinary", cloudinaryRoutes);
 
+// Bunny CDN routes
 app.use("/api/bunny", bunnyRoutes);
 
-
+// 404 handler - must be after all routes
 app.use((req, res) => {
   res.status(404).json({ 
     error: "Route not found",
@@ -180,11 +184,10 @@ app.use((req, res) => {
   });
 });
 
-
+// Global error handler
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
   console.error("❌ Global error:", err);
   
-
   const message = process.env.NODE_ENV === "production" 
     ? "Internal server error" 
     : err.message;
@@ -202,7 +205,7 @@ setInterval(() => {
     .catch((err) => console.error("❌ Token cleanup error:", err));
 }, 60 * 60 * 1000); // Every hour
 
-//  Cleanup on server shutdown
+// Cleanup on server shutdown
 process.on("SIGTERM", () => {
   console.log("🛑 SIGTERM received, cleaning up...");
   cleanupExpiredTokens()
@@ -225,6 +228,7 @@ app.listen(PORT, "0.0.0.0", () => {
   console.log(`🌐 CORS origins: ${allowedOrigins.join(", ")}`);
   console.log(`🛡️  Rate limiting: Active`);
   console.log(`🍪 Cookie support: Active`);
+  console.log(`🍌 Nano Banana: Available at /api/image-generation/nano-banana`);
   console.log(`📊 Environment: ${process.env.NODE_ENV || "development"}`);
   console.log("=================================");
 });
