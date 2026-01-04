@@ -14,6 +14,7 @@ import {
   setAccessTokenCookie,
   setRefreshTokenCookie,
 } from "../utils/cookies.ts";
+import { sendWelcomeEmail } from "./apis/nodemailer.ts";
 
 const { Strategy: GoogleStrategy } = pkg;
 const router = Router();
@@ -86,6 +87,7 @@ passport.use(
           // ❌ REMOVED: Free trial creation
           // Users start on Free plan with NO subscription record
           console.log(`✨ New Google user created: ${email} (ID: ${user.id}) - Free plan (no subscription)`);
+          await sendWelcomeEmail(email, newUser.name);
         }
 
         return done(null, user);
