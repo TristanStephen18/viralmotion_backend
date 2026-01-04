@@ -101,53 +101,51 @@ export async function sendWelcomeEmail(email: string, name?: string) {
     subject: "Welcome to Viral Motion! 🎉",
     text: `Welcome to Viral Motion${name ? `, ${name}` : ''}! We're excited to have you on board.`,
     html: `
-      <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f4f4f4; padding: 40px 20px;">
-        <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 10px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
-          <!-- Header with Logo -->
-          <div style="background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%); padding: 40px 20px; text-align: center;">
-            <img src="https://res.cloudinary.com/dptlyosrg/image/upload/v1766760544/viralmotionlogo_faewfk.png" 
-                 alt="Viral Motion Logo" 
-                 style="max-width: 150px; height: auto; margin-bottom: 20px;">
-            <h1 style="color: #ffffff; margin: 0; font-size: 28px; font-weight: 600;">Welcome to Viral Motion!</h1>
+      <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #0a0a0a; padding: 40px 20px;">
+        <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 8px 24px rgba(139, 92, 246, 0.15);">
+          <!-- Header -->
+          <div style="background: linear-gradient(135deg, #7c3aed 0%, #a855f7 100%); padding: 50px 20px; text-align: center;">
+            <h1 style="color: #ffffff; margin: 0; font-size: 32px; font-weight: 700; letter-spacing: -0.5px;">Welcome to Viral Motion!</h1>
+            <p style="color: rgba(255, 255, 255, 0.9); margin: 10px 0 0 0; font-size: 16px;">Your journey starts here</p>
           </div>
           
           <!-- Content -->
           <div style="padding: 40px 30px;">
-            ${name ? `<p style="font-size: 18px; color: #333; margin-bottom: 20px;">Hi <strong>${name}</strong>,</p>` : '<p style="font-size: 18px; color: #333; margin-bottom: 20px;">Hi there,</p>'}
+            ${name ? `<p style="font-size: 18px; color: #1a1a1a; margin-bottom: 20px;">Hi <strong style="color: #7c3aed;">${name}</strong>,</p>` : '<p style="font-size: 18px; color: #1a1a1a; margin-bottom: 20px;">Hi there,</p>'}
             
-            <p style="color: #555; line-height: 1.8; margin-bottom: 20px;">
-              We're <strong>thrilled</strong> to have you join our community! 🎉 Your account has been successfully verified and you're all set to get started.
+            <p style="color: #4a4a4a; line-height: 1.8; margin-bottom: 20px; font-size: 15px;">
+              We're <strong style="color: #1a1a1a;">thrilled</strong> to have you join our community! 🎉 Your account has been successfully verified and you're all set to get started.
             </p>
             
-            <div style="background-color: #f9f9f9; border-left: 4px solid #4CAF50; padding: 20px; margin: 30px 0; border-radius: 5px;">
-              <h3 style="color: #4CAF50; margin-top: 0; font-size: 18px;">What's Next?</h3>
-              <ul style="color: #555; line-height: 2; padding-left: 20px; margin-bottom: 0;">
+            <div style="background: linear-gradient(135deg, #faf5ff 0%, #f3e8ff 100%); border-left: 4px solid #7c3aed; padding: 25px; margin: 30px 0; border-radius: 8px;">
+              <h3 style="color: #7c3aed; margin-top: 0; font-size: 18px; font-weight: 600;">What's Next?</h3>
+              <ul style="color: #4a4a4a; line-height: 2; padding-left: 20px; margin-bottom: 0; font-size: 15px;">
                 <li>🚀 Explore the dashboard and discover all features</li>
                 <li>✨ Create your first project and bring your ideas to life</li>
               </ul>
             </div>
             
-            <p style="color: #555; line-height: 1.8; margin-bottom: 30px;">
+            <p style="color: #4a4a4a; line-height: 1.8; margin-bottom: 30px; font-size: 15px;">
               If you have any questions or need assistance, our support team is always here to help. Just reply to this email!
             </p>
             
             <div style="text-align: center; margin: 40px 0;">
               <a href="#" 
-                 style="display: inline-block; background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%); color: white; 
-                        padding: 15px 40px; text-decoration: none; border-radius: 50px; font-weight: 600; 
-                        font-size: 16px; box-shadow: 0 4px 6px rgba(76, 175, 80, 0.3);">
+                 style="display: inline-block; background: linear-gradient(135deg, #7c3aed 0%, #a855f7 100%); color: white; 
+                        padding: 16px 45px; text-decoration: none; border-radius: 50px; font-weight: 600; 
+                        font-size: 16px; box-shadow: 0 6px 20px rgba(124, 58, 237, 0.4); transition: all 0.3s ease;">
                 Get Started Now
               </a>
             </div>
           </div>
           
           <!-- Footer -->
-          <div style="background-color: #f9f9f9; padding: 30px; text-align: center; border-top: 1px solid #eeeeee;">
-            <p style="color: #888; font-size: 14px; margin: 0 0 10px 0;">
+          <div style="background-color: #fafafa; padding: 30px; text-align: center; border-top: 1px solid #e5e5e5;">
+            <p style="color: #666; font-size: 14px; margin: 0 0 10px 0;">
               Best regards,<br>
-              <strong style="color: #4CAF50;">The Viral Motion Team</strong>
+              <strong style="color: #7c3aed;">The Viral Motion Team</strong>
             </p>
-            <p style="color: #aaa; font-size: 12px; margin: 20px 0 0 0;">
+            <p style="color: #999; font-size: 12px; margin: 20px 0 0 0;">
               © ${new Date().getFullYear()} Viral Motion. All rights reserved.
             </p>
           </div>
