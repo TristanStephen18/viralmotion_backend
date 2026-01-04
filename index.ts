@@ -46,23 +46,30 @@ import adminRoutes from "./routes/admin.ts";
 import analyticsRoutes from "./routes/analytics.ts";
 import promptImprovementRoutes from "./routes/apis/promptImprovement.ts";
 import bunnyRoutes from './routes/apis/bunny.ts';
+import usageRoutes from "./routes/usage.ts";
 
 const app = express();
 
-// required for rate limiting and IP detection
+// Trust proxy
 if (process.env.NODE_ENV === 'production') {
   app.set('trust proxy', 1); 
 } else {
-  app.set('trust proxy', false); // No proxy in development
+  app.set('trust proxy', false);
 }
 
-// Security headers (XSS, clickjacking, MIME sniffing protection)
+// ============================================================
+// ✅ CRITICAL: Security headers (NO body parsing)
+// ============================================================
 app.use(securityHeaders);
 
-// Cookie parser for HTTP-only cookies
+// ============================================================
+// ✅ CRITICAL: Cookie parser (NO body parsing)
+// ============================================================
 app.use(cookieParser());
 
-// CORS configuration with credentials support
+// ============================================================
+// ✅ CRITICAL: CORS (NO body parsing)
+// ============================================================
 const allowedOrigins = [
   process.env.CLIENT_URL || "http://localhost:5173",
   "https://remotion-web-application.vercel.app",
@@ -72,48 +79,49 @@ const allowedOrigins = [
 app.use(
   cors({
     origin: (origin, callback) => {
-     
       if (!origin) return callback(null, true);
-      
       if (allowedOrigins.includes(origin)) {
         callback(null, true);
       } else {
         callback(new Error("Not allowed by CORS"));
       }
     },
-    credentials: true, // Allow cookies to be sent
+    credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization", "X-2FA-Verified", "X-Reauth-Token"],
     exposedHeaders: ["Set-Cookie"],
   })
 );
 
-// ✅ WEBHOOK MUST COME BEFORE express.json()
+// ============================================================
+// ✅ CRITICAL: WEBHOOK ROUTE MUST BE FIRST (before ANY body parsing)
+// ============================================================
 app.post(
   '/api/subscription/webhook',
   express.raw({ type: 'application/json' }),
   handleStripeWebhook
 );
 
+// ============================================================
+// ⚠️ ALL BODY PARSING COMES AFTER WEBHOOK
+// ============================================================
 
-// Rate limiting (general API protection)
+// Rate limiting
 app.use(generalRateLimiter);
-
-// Speed limiting (progressive delays)
 app.use(speedLimiter);
 
-// Body parser
+// Body parser (comes AFTER webhook)
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
-// Session configuration (for Google OAuth)
+// Session configuration
 app.use(
   session({
     secret: process.env.SESSION_SECRET || "supersecret",
     resave: false,
     saveUninitialized: false,
     cookie: {
-      secure: process.env.NODE_ENV === "production", // HTTPS only in production
+      secure: process.env.NODE_ENV === "production",
       httpOnly: true,
       maxAge: 24 * 60 * 60 * 1000, 
     },
@@ -123,7 +131,7 @@ app.use(
 app.use(passport.initialize());
 app.use(passport.session());
 
-//  Health check endpoint
+// Health check
 app.get("/health", (req, res) => {
   res.json({ 
     status: "healthy", 
@@ -132,20 +140,22 @@ app.get("/health", (req, res) => {
   });
 });
 
-// Register routes
+// ============================================================
+// Register ALL other routes (AFTER body parsing)
+// ============================================================
 app.use("/api", airoutes);
 app.use("/generatevideo", renderingroutes);
 app.use("/uploadhandler", uploadroutes);
 app.use("/useruploads", uploadindbroutes);
 app.use("/sound", elevenlabsroutes);
 app.use("/reddit", redditroute);
-app.use("/auth", authroutes); 
+app.use("/auth", authroutes);
 app.use("/projects", projectsroutes);
 app.use("/pixabay", pixabayroutes);
 app.use("/renders", rendersroutes);
 app.use("/datasets", datasetsdbupload);
 app.use("/fromuploadsdataset", getDatasetFronUploadsroute);
-app.use("/authenticate", GoogleRoutes); 
+app.use("/authenticate", GoogleRoutes);
 app.use("/api/picture", removeBgroutes);
 app.use("/api/seedream", seeDreamRoutes);
 app.use("/api/huggingFace", huggingFaceRoutes);
@@ -158,21 +168,19 @@ app.use("/api/youtube", ytRoutes);
 app.use("/api/tools/audio", audioRoutes);
 app.use("/api/tools/speech-enhancement", enhanceSpeechRoutes);
 app.use("/api/veo3-video-generation", veo3Routes);
-app.use("/api/youtube-v2", youtubeRoutes); 
+app.use("/api/youtube-v2", youtubeRoutes);
 app.use('/api/tools/save-image', saveImageRoutes);
 app.use("/api/image-generation", imageGenRoutes);
-app.use("/api/subscription", subscriptionRoutes);
+app.use("/api/subscription", subscriptionRoutes); // ⚠️ This should NOT have webhook route
 app.use("/admin", adminRoutes);
 app.use("/api/analytics", analyticsRoutes);
 app.use("/api/prompt-improvement", promptImprovementRoutes);
 app.use('/api/proxy', proxyRoutes);
-
-//new routes
+app.use("/api/usage", usageRoutes);
 app.use("/cloudinary", ssToCloudinaryRoutes);
-
 app.use("/api/bunny", bunnyRoutes);
 
-
+// 404 handler
 app.use((req, res) => {
   res.status(404).json({ 
     error: "Route not found",
@@ -180,11 +188,10 @@ app.use((req, res) => {
   });
 });
 
-
+// Error handler
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
   console.error("❌ Global error:", err);
   
-
   const message = process.env.NODE_ENV === "production" 
     ? "Internal server error" 
     : err.message;
@@ -200,9 +207,9 @@ setInterval(() => {
   cleanupExpiredTokens()
     .then(() => console.log("✅ Cleaned up expired tokens"))
     .catch((err) => console.error("❌ Token cleanup error:", err));
-}, 60 * 60 * 1000); // Every hour
+}, 60 * 60 * 1000);
 
-//  Cleanup on server shutdown
+// Cleanup on server shutdown
 process.on("SIGTERM", () => {
   console.log("🛑 SIGTERM received, cleaning up...");
   cleanupExpiredTokens()
@@ -226,6 +233,7 @@ app.listen(PORT, "0.0.0.0", () => {
   console.log(`🛡️  Rate limiting: Active`);
   console.log(`🍪 Cookie support: Active`);
   console.log(`📊 Environment: ${process.env.NODE_ENV || "development"}`);
+  console.log(`🪝 Webhook endpoint: POST /api/subscription/webhook`);
   console.log("=================================");
 });
 

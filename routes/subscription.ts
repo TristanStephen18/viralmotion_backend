@@ -10,17 +10,17 @@ import {
   createSetupIntent,      
   confirmSubscription,
 } from '../controllers/subscription/subscriptionController.ts';
-import { handleStripeWebhook } from '../controllers/subscription/webhookController.ts';
+// ❌ REMOVE WEBHOOK IMPORT
+// import { handleStripeWebhook } from '../controllers/subscription/webhookController.ts';
 
 const router = express.Router();
 
-// Webhook (NO auth, raw body)
-router.post('/webhook', express.raw({ type: 'application/json' }), handleStripeWebhook);
+// ❌ REMOVE THIS LINE COMPLETELY
+// router.post('/webhook', express.raw({ type: 'application/json' }), handleStripeWebhook);
 
+// ✅ ONLY THESE ROUTES
 router.post('/create-setup-intent', requireAuth, createSetupIntent);
 router.post('/confirm', requireAuth, confirmSubscription);
-
-// Protected routes
 router.post('/create-checkout', requireAuth, createCheckoutSession);
 router.get('/status', requireAuth, getSubscriptionStatus);
 router.get('/details', requireAuth, getSubscriptionDetails);
