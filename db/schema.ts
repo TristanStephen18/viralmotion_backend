@@ -31,7 +31,6 @@ export const users = pgTable("users", {
   lastLogin: timestamp("last_login"),
   passwordChangedAt: timestamp("password_changed_at"),
   stripeCustomerId: varchar("stripe_customer_id", { length: 255 }).unique(),
-  numberOfLogins: integer("number_of_logins").default(0),
 });
 
 export const templates = pgTable("templates", {
@@ -369,5 +368,31 @@ export const adminAuditLogs = pgTable(
     targetIdIdx: index("admin_audit_logs_target_id_idx").on(table.targetId),
     createdAtIdx: index("admin_audit_logs_created_at_idx").on(table.createdAt),
     statusIdx: index("admin_audit_logs_status_idx").on(table.status),
+  })
+);
+
+export const usageTracking = pgTable(
+  "usage_tracking",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: integer("user_id")
+      .references(() => users.id, { onDelete: "cascade" })
+      .notNull()
+      .unique(), // One row per user
+    
+    // ✅ SIMPLIFIED: Only track videos created (creation = export)
+    videosThisMonth: integer("videos_this_month").default(0).notNull(),
+    lastVideoReset: timestamp("last_video_reset").defaultNow().notNull(),
+    
+    // ✅ AI generation tracking (daily limit)
+    aiGenerationsToday: integer("ai_generations_today").default(0).notNull(),
+    lastAiReset: timestamp("last_ai_reset").defaultNow().notNull(),
+    
+    // Timestamps
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    userIdIdx: index("usage_tracking_user_id_idx").on(table.userId),
   })
 );
