@@ -5,16 +5,17 @@ import {
 } from "@remotion/lambda/client";
 
 export const handleLambdaRendering = async (req: Request, res: Response) => {
-  const { inputProps, format } = req.body;
+  const { inputProps, format, templateId } = req.body;
   console.log(inputProps);
   console.log(inputProps.config.layers);
+  
   try {
     const { renderId, bucketName } = await renderMediaOnLambda({
       concurrency: 5,
       region: "us-east-1",
       functionName: "remotion-render-4-0-377-mem2048mb-disk2048mb-120sec",
       serveUrl: "https://remotionlambda-useast1-0l1u2rw3fu.s3.us-east-1.amazonaws.com/sites/viral-motion/index.html",
-      composition: "DynamicVideo",
+      composition: templateId === "7" ? "ExtendedDynamicComposition": "DynamicVideo",
       codec: format === "mp4" ? "h264" : "h264",
       inputProps,
       privacy: "public",
