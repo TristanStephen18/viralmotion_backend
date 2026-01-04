@@ -16,7 +16,7 @@ import {
 import { db } from "../../db/client.ts";
 import { requireAuth, require2FA } from "../../utils/authmiddleware.ts";
 import type { AuthRequest } from "../../utils/authmiddleware.ts";
-import { sendEmailVerification, sendOtpEmail } from "../apis/nodemailer.ts";
+import { sendEmailVerification, sendOtpEmail, sendWelcomeEmail } from "../apis/nodemailer.ts";
 import {
   authRateLimiter,
   signupRateLimiter,
@@ -374,10 +374,14 @@ router.get("/verify", async (req, res) => {
   try {
     const decoded = jwt.verify(token, JWT_SECRET) as { userId: number };
 
-    await db
+    const response = await db
       .update(users)
       .set({ verified: true })
-      .where(eq(users.id, decoded.userId));
+      .where(eq(users.id, decoded.userId)).returning();
+
+      const userdata = response[0];
+
+    await sendWelcomeEmail(userdata.email, userdata.name);
 
     // Dynamic URL
     res.redirect(`${CLIENT_URL}/login?verified=true`);
