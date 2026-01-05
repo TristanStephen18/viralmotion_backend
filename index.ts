@@ -47,6 +47,7 @@ import analyticsRoutes from "./routes/analytics.ts";
 import promptImprovementRoutes from "./routes/apis/promptImprovement.ts";
 import bunnyRoutes from './routes/apis/bunny.ts';
 import usageRoutes from "./routes/usage.ts";
+import pollinationsRoutes from './routes/apis/pollinations.ts';
 
 const app = express();
 
@@ -179,6 +180,7 @@ app.use('/api/proxy', proxyRoutes);
 app.use("/api/usage", usageRoutes);
 app.use("/cloudinary", ssToCloudinaryRoutes);
 app.use("/api/bunny", bunnyRoutes);
+app.use("/api/pollinations", pollinationsRoutes);
 
 // 404 handler
 app.use((req, res) => {
