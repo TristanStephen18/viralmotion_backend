@@ -8,6 +8,7 @@ import cloudinary from "../../utils/cloudinaryClient.ts";
 import axios from "axios";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { nanoBananaService } from "../../services/nanoBanana.service.ts"; // ✨ NEW
+import { checkAIGenerationAllowed, incrementAIGeneration } from "../../utils/usageHelper.ts";
 
 // Initialize Gemini for prompt improvement
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
@@ -52,6 +53,12 @@ export const saveImageGeneration = async (req: Request, res: Response) => {
 
     if (!prompt || !model || !aspectRatio || !imageUrl) {
       return res.status(400).json({ success: false, error: "Missing required fields" });
+    }
+
+    // Check usage limit
+    const usageCheck = await checkAIGenerationAllowed(userId);
+    if (!usageCheck.allowed) {
+      return res.status(429).json({ success: false, error: "AI generation limit reached", usageInfo: usageCheck });
     }
 
     let permanentUrl = imageUrl;
@@ -125,7 +132,10 @@ export const saveImageGeneration = async (req: Request, res: Response) => {
           isBase64: imageUrl.startsWith("data:image"),
         },
       })
-      .returning();
+     .returning();
+
+    // Increment usage after successful save
+    await incrementAIGeneration(userId);
 
     console.log(`[ImageGen] ✅ Saved generation: ${generation.id}`);
 
@@ -287,6 +297,12 @@ export const generateWithNanoBanana = async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, error: "Aspect ratio is required" });
     }
 
+    // Check usage limit
+    const usageCheck = await checkAIGenerationAllowed(userId);
+    if (!usageCheck.allowed) {
+      return res.status(429).json({ success: false, error: "AI generation limit reached", usageInfo: usageCheck });
+    }
+
     // Generate image using service
     const result = await nanoBananaService.generateImage({
       prompt: prompt.trim(),
@@ -300,6 +316,9 @@ export const generateWithNanoBanana = async (req: Request, res: Response) => {
         error: result.error || "Failed to generate image",
       });
     }
+
+    // Increment usage after successful generation
+    await incrementAIGeneration(userId);
 
     return res.status(200).json({
       success: true,
