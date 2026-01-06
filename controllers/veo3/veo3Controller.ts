@@ -7,6 +7,7 @@ import { v2 as cloudinary } from "cloudinary";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+import { checkAIGenerationAllowed, incrementAIGeneration } from "../../utils/usageHelper.ts";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
@@ -37,6 +38,12 @@ export const generateVideo = async (req: Request, res: Response) => {
       return res
         .status(400)
         .json({ success: false, error: "Prompt is required" });
+    }
+
+    // Check usage limit
+    const usageCheck = await checkAIGenerationAllowed(userId);
+    if (!usageCheck.allowed) {
+      return res.status(429).json({ success: false, error: "AI generation limit reached", usageInfo: usageCheck });
     }
 
     // Handle reference image from multer
@@ -107,7 +114,8 @@ export const generateVideo = async (req: Request, res: Response) => {
       durationSeconds,
       ratio,
       referenceImageUrl,
-      refType 
+      refType,
+      userId
     ).catch((error) => {
       console.error(
         `[VEO3] Async processing error for ${generation.id}:`,
@@ -133,7 +141,8 @@ async function processVideoGeneration(
   duration: number,
   aspectRatio: string,
   referenceImageUrl?: string | null,
-  referenceType?: string
+  referenceType?: string,
+  userId?: number
 ) {
   try {
     console.log(`[VEO3] Starting generation for: ${generationId}`);
@@ -281,6 +290,11 @@ async function processVideoGeneration(
         },
       })
       .where(eq(veo3Generations.id, generationId));
+
+    // Increment usage after successful completion
+    if (userId) {
+      await incrementAIGeneration(userId);
+    }
 
     console.log(`[VEO3] ✅ Completed: ${generationId}`);
   } catch (error) {

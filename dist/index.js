@@ -103,6 +103,7 @@ __export(schema_exports, {
   subscriptions: () => subscriptions,
   templates: () => templates,
   uploads: () => uploads,
+  usageTracking: () => usageTracking,
   users: () => users,
   veo3Generations: () => veo3Generations,
   youtubeDownloads: () => youtubeDownloads
@@ -295,8 +296,8 @@ var subscriptions = pgTable(
     specialNotes: text("special_notes"),
     grantedBy: integer("granted_by").references(() => adminUsers.id),
     // Rest stays the same...
-    status: varchar("status", { length: 50 }).$type().notNull(),
-    plan: varchar("plan", { length: 50 }).notNull(),
+    status: varchar("status", { length: 50 }).$type().default("active").notNull(),
+    plan: varchar("plan", { length: 50 }).$type().default("free").notNull(),
     currentPeriodStart: timestamp("current_period_start").notNull(),
     currentPeriodEnd: timestamp("current_period_end").notNull(),
     cancelAtPeriodEnd: boolean("cancel_at_period_end").default(false).notNull(),
@@ -328,8 +329,8 @@ var adminUsers = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
     lastLogin: timestamp("last_login"),
     passwordChangedAt: timestamp("password_changed_at"),
-    active: boolean("active").default(true).notNull(),
-    passwordChangedAt: timestamp("password_changed_at")
+    active: boolean("active").default(true).notNull()
+    // passwordChangedAt: timestamp("password_changed_at")
   },
   (table) => ({
     emailIdx: index("admin_users_email_idx").on(table.email)
@@ -394,10 +395,32 @@ var adminAuditLogs = pgTable(
   (table) => ({
     adminIdIdx: index("admin_audit_logs_admin_id_idx").on(table.adminId),
     actionIdx: index("admin_audit_logs_action_idx").on(table.action),
-    targetTypeIdx: index("admin_audit_logs_target_type_idx").on(table.targetType),
+    targetTypeIdx: index("admin_audit_logs_target_type_idx").on(
+      table.targetType
+    ),
     targetIdIdx: index("admin_audit_logs_target_id_idx").on(table.targetId),
     createdAtIdx: index("admin_audit_logs_created_at_idx").on(table.createdAt),
     statusIdx: index("admin_audit_logs_status_idx").on(table.status)
+  })
+);
+var usageTracking = pgTable(
+  "usage_tracking",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: integer("user_id").references(() => users.id, { onDelete: "cascade" }).notNull().unique(),
+    // One row per user
+    // ✅ SIMPLIFIED: Only track videos created (creation = export)
+    videosThisMonth: integer("videos_this_month").default(0).notNull(),
+    lastVideoReset: timestamp("last_video_reset").defaultNow().notNull(),
+    // ✅ AI generation tracking (daily limit)
+    aiGenerationsToday: integer("ai_generations_today").default(0).notNull(),
+    lastAiReset: timestamp("last_ai_reset").defaultNow().notNull(),
+    // Timestamps
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull()
+  },
+  (table) => ({
+    userIdIdx: index("usage_tracking_user_id_idx").on(table.userId)
   })
 );
 
@@ -1542,7 +1565,7 @@ import {
   renderMediaOnLambda
 } from "@remotion/lambda/client";
 var handleLambdaRendering = async (req, res) => {
-  const { inputProps, format } = req.body;
+  const { inputProps, format, templateId } = req.body;
   console.log(inputProps);
   console.log(inputProps.config.layers);
   try {
@@ -1551,7 +1574,7 @@ var handleLambdaRendering = async (req, res) => {
       region: "us-east-1",
       functionName: "remotion-render-4-0-377-mem2048mb-disk2048mb-120sec",
       serveUrl: "https://remotionlambda-useast1-0l1u2rw3fu.s3.us-east-1.amazonaws.com/sites/viral-motion/index.html",
-      composition: "DynamicVideo",
+      composition: templateId === "7" ? "ExtendedDynamicComposition" : "DynamicVideo",
       codec: format === "mp4" ? "h264" : "h264",
       inputProps,
       privacy: "public"
@@ -2546,6 +2569,75 @@ async function sendOtpEmail(email) {
     return null;
   }
 }
+async function sendWelcomeEmail(email, name) {
+  const msg = {
+    to: email,
+    from: {
+      name: "Viral Motion",
+      email: "viralmotion.app@gmail.com"
+    },
+    subject: "Welcome to Viral Motion! \u{1F389}",
+    text: `Welcome to Viral Motion${name ? `, ${name}` : ""}! We're excited to have you on board.`,
+    html: `
+      <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #0a0a0a; padding: 40px 20px;">
+        <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 8px 24px rgba(139, 92, 246, 0.15);">
+          <!-- Header -->
+          <div style="background: linear-gradient(135deg, #7c3aed 0%, #a855f7 100%); padding: 50px 20px; text-align: center;">
+            <h1 style="color: #ffffff; margin: 0; font-size: 32px; font-weight: 700; letter-spacing: -0.5px;">Welcome to Viral Motion!</h1>
+            <p style="color: rgba(255, 255, 255, 0.9); margin: 10px 0 0 0; font-size: 16px;">Your journey starts here</p>
+          </div>
+          
+          <!-- Content -->
+          <div style="padding: 40px 30px;">
+            ${name ? `<p style="font-size: 18px; color: #1a1a1a; margin-bottom: 20px;">Hi <strong style="color: #7c3aed;">${name}</strong>,</p>` : '<p style="font-size: 18px; color: #1a1a1a; margin-bottom: 20px;">Hi there,</p>'}
+            
+            <p style="color: #4a4a4a; line-height: 1.8; margin-bottom: 20px; font-size: 15px;">
+              We're <strong style="color: #1a1a1a;">thrilled</strong> to have you join our community! \u{1F389} Your account has been successfully verified and you're all set to get started.
+            </p>
+            
+            <div style="background: linear-gradient(135deg, #faf5ff 0%, #f3e8ff 100%); border-left: 4px solid #7c3aed; padding: 25px; margin: 30px 0; border-radius: 8px;">
+              <h3 style="color: #7c3aed; margin-top: 0; font-size: 18px; font-weight: 600;">What's Next?</h3>
+              <ul style="color: #4a4a4a; line-height: 2; padding-left: 20px; margin-bottom: 0; font-size: 15px;">
+                <li>\u{1F680} Explore the dashboard and discover all features</li>
+                <li>\u2728 Create your first project and bring your ideas to life</li>
+              </ul>
+            </div>
+            
+            <p style="color: #4a4a4a; line-height: 1.8; margin-bottom: 30px; font-size: 15px;">
+              If you have any questions or need assistance, our support team is always here to help. Just reply to this email!
+            </p>
+            
+            <div style="text-align: center; margin: 40px 0;">
+              <a href="#" 
+                 style="display: inline-block; background: linear-gradient(135deg, #7c3aed 0%, #a855f7 100%); color: white; 
+                        padding: 16px 45px; text-decoration: none; border-radius: 50px; font-weight: 600; 
+                        font-size: 16px; box-shadow: 0 6px 20px rgba(124, 58, 237, 0.4); transition: all 0.3s ease;">
+                Get Started Now
+              </a>
+            </div>
+          </div>
+          
+          <!-- Footer -->
+          <div style="background-color: #fafafa; padding: 30px; text-align: center; border-top: 1px solid #e5e5e5;">
+            <p style="color: #666; font-size: 14px; margin: 0 0 10px 0;">
+              Best regards,<br>
+              <strong style="color: #7c3aed;">The Viral Motion Team</strong>
+            </p>
+            <p style="color: #999; font-size: 12px; margin: 20px 0 0 0;">
+              \xA9 ${(/* @__PURE__ */ new Date()).getFullYear()} Viral Motion. All rights reserved.
+            </p>
+          </div>
+        </div>
+      </div>
+    `
+  };
+  try {
+    await sgMail.send(msg);
+    console.log("\u2705 Welcome email sent successfully!");
+  } catch (error) {
+    console.error("\u274C Welcome email send error:", error.response?.body || error.message);
+  }
+}
 
 // middleware/validator.ts
 import validator from "validator";
@@ -2658,30 +2750,103 @@ import jwt4 from "jsonwebtoken";
 
 // config/stripe.ts
 import Stripe from "stripe";
-if (!process.env.STRIPE_SECRET_KEY) {
-  throw new Error("STRIPE_SECRET_KEY is not set in environment variables");
+var STRIPE_MODE = process.env.STRIPE_MODE || "test";
+var isTestMode = STRIPE_MODE === "test";
+var isLiveMode = STRIPE_MODE === "live";
+var STRIPE_SECRET_KEY = isTestMode ? process.env.STRIPE_SECRET_KEY_TEST : process.env.STRIPE_SECRET_KEY_LIVE;
+if (!STRIPE_SECRET_KEY) {
+  throw new Error(
+    `STRIPE_SECRET_KEY is not set for ${STRIPE_MODE} mode. Please set STRIPE_SECRET_KEY_${STRIPE_MODE.toUpperCase()} in your .env file.`
+  );
 }
-var stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
+var stripe = new Stripe(STRIPE_SECRET_KEY, {
   apiVersion: "2025-09-30.clover"
 });
 var STRIPE_CONFIG = {
-  monthlyPriceId: process.env.STRIPE_PRICE_ID_MONTHLY || "",
-  yearlyPriceId: process.env.STRIPE_PRICE_ID_YEARLY || "",
-  webhookSecret: process.env.STRIPE_WEBHOOK_SECRET || "",
-  publishableKey: process.env.STRIPE_PUBLISHABLE_KEY || "",
-  trialDays: 7
+  // Price IDs
+  starterPriceId: isTestMode ? process.env.STRIPE_PRICE_ID_STARTER_TEST || "" : process.env.STRIPE_PRICE_ID_STARTER_LIVE || "",
+  proPriceId: isTestMode ? process.env.STRIPE_PRICE_ID_PRO_TEST || "" : process.env.STRIPE_PRICE_ID_PRO_LIVE || "",
+  teamPriceId: isTestMode ? process.env.STRIPE_PRICE_ID_TEAM_TEST || "" : process.env.STRIPE_PRICE_ID_TEAM_LIVE || "",
+  // Webhook secret
+  webhookSecret: isTestMode ? process.env.STRIPE_WEBHOOK_SECRET_TEST || "" : process.env.STRIPE_WEBHOOK_SECRET_LIVE || "",
+  // Publishable key
+  publishableKey: isTestMode ? process.env.STRIPE_PUBLISHABLE_KEY_TEST || "" : process.env.STRIPE_PUBLISHABLE_KEY_LIVE || "",
+  // Mode info
+  mode: STRIPE_MODE,
+  isTestMode,
+  isLiveMode
 };
-if (!STRIPE_CONFIG.monthlyPriceId) {
-  console.warn("\u26A0\uFE0F STRIPE_PRICE_ID_MONTHLY is not set");
+var missingVars = [];
+if (!STRIPE_CONFIG.starterPriceId) {
+  missingVars.push(`STRIPE_PRICE_ID_STARTER_${STRIPE_MODE.toUpperCase()}`);
 }
-if (!STRIPE_CONFIG.yearlyPriceId) {
-  console.warn("\u26A0\uFE0F STRIPE_PRICE_ID_YEARLY is not set");
+if (!STRIPE_CONFIG.proPriceId) {
+  missingVars.push(`STRIPE_PRICE_ID_PRO_${STRIPE_MODE.toUpperCase()}`);
+}
+if (!STRIPE_CONFIG.teamPriceId) {
+  missingVars.push(`STRIPE_PRICE_ID_TEAM_${STRIPE_MODE.toUpperCase()}`);
 }
 if (!STRIPE_CONFIG.webhookSecret) {
-  console.warn("\u26A0\uFE0F STRIPE_WEBHOOK_SECRET is not set");
+  missingVars.push(`STRIPE_WEBHOOK_SECRET_${STRIPE_MODE.toUpperCase()}`);
 }
-function getPriceId(interval) {
-  return interval === "yearly" ? STRIPE_CONFIG.yearlyPriceId : STRIPE_CONFIG.monthlyPriceId;
+if (!STRIPE_CONFIG.publishableKey) {
+  missingVars.push(`STRIPE_PUBLISHABLE_KEY_${STRIPE_MODE.toUpperCase()}`);
+}
+if (missingVars.length > 0) {
+  console.error("\u274C Missing required Stripe environment variables:");
+  missingVars.forEach((varName) => console.error(`   - ${varName}`));
+  throw new Error(`Missing Stripe configuration for ${STRIPE_MODE} mode`);
+}
+if (process.env.NODE_ENV === "production" && isTestMode) {
+  console.error("\u274C CRITICAL ERROR: Production environment is using TEST Stripe keys!");
+  console.error("   Set STRIPE_MODE=live in production environment variables.");
+  throw new Error("Cannot use Stripe test mode in production");
+}
+if (process.env.NODE_ENV === "development" && isLiveMode) {
+  console.warn("\u26A0\uFE0F  WARNING: Development environment is using LIVE Stripe keys!");
+  console.warn("   Real money will be charged. Consider using STRIPE_MODE=test");
+  console.warn("   Press Ctrl+C within 5 seconds to abort...");
+  await new Promise((resolve) => setTimeout(resolve, 5e3));
+}
+console.log("\n" + "=".repeat(60));
+console.log("\u{1F527} Stripe Configuration Loaded:");
+console.log("=".repeat(60));
+console.log(`   Mode:           ${STRIPE_MODE.toUpperCase()} ${isTestMode ? "(Safe)" : "(LIVE CHARGES)"}`);
+console.log(`   Environment:    ${process.env.NODE_ENV || "development"}`);
+console.log(`   Secret Key:     ${STRIPE_SECRET_KEY.substring(0, 12)}...`);
+console.log(`   Publishable:    ${STRIPE_CONFIG.publishableKey.substring(0, 12)}...`);
+console.log(`   Webhook Secret: ${STRIPE_CONFIG.webhookSecret.substring(0, 12)}...`);
+console.log("\n   Price IDs:");
+console.log(`   - Starter:      ${STRIPE_CONFIG.starterPriceId}`);
+console.log(`   - Pro:          ${STRIPE_CONFIG.proPriceId}`);
+console.log(`   - Team:         ${STRIPE_CONFIG.teamPriceId}`);
+console.log("=".repeat(60) + "\n");
+function getPriceId(plan) {
+  let priceId;
+  switch (plan) {
+    case "starter":
+      priceId = STRIPE_CONFIG.starterPriceId;
+      break;
+    case "pro":
+      priceId = STRIPE_CONFIG.proPriceId;
+      break;
+    case "team":
+      priceId = STRIPE_CONFIG.teamPriceId;
+      break;
+    default:
+      throw new Error(`Invalid plan: ${plan}`);
+  }
+  if (!priceId) {
+    throw new Error(`No price ID configured for plan: ${plan} in ${STRIPE_MODE} mode`);
+  }
+  return priceId;
+}
+function getPlanFromPriceId(priceId) {
+  if (priceId === STRIPE_CONFIG.starterPriceId) return "starter";
+  if (priceId === STRIPE_CONFIG.proPriceId) return "pro";
+  if (priceId === STRIPE_CONFIG.teamPriceId) return "team";
+  console.warn(`\u26A0\uFE0F Unknown price ID: ${priceId} - defaulting to null`);
+  return null;
 }
 
 // routes/database/auth.ts
@@ -2707,32 +2872,7 @@ router7.post(
         profilePicture: "https://res.cloudinary.com/dnxc1lw18/image/upload/v1761048476/pfp_yitfgl.jpg",
         verified: false
       }).returning();
-      try {
-        const trialEndDate = /* @__PURE__ */ new Date();
-        trialEndDate.setDate(trialEndDate.getDate() + 7);
-        await db.insert(subscriptions).values({
-          userId: newUser.id,
-          stripeSubscriptionId: null,
-          // ✅ CHANGED: null instead of ''
-          stripeCustomerId: null,
-          // ✅ CHANGED: null instead of ''
-          stripePriceId: null,
-          // ✅ CHANGED: null instead of ''
-          billingInterval: "monthly",
-          status: "free_trial",
-          plan: "free",
-          currentPeriodStart: /* @__PURE__ */ new Date(),
-          currentPeriodEnd: trialEndDate,
-          cancelAtPeriodEnd: false,
-          trialStart: /* @__PURE__ */ new Date(),
-          trialEnd: trialEndDate
-        });
-        console.log(
-          `\u2705 Created free 7-day trial for user ${newUser.id} (${email})`
-        );
-      } catch (trialError) {
-        console.error("\u26A0\uFE0F Failed to create free trial:", trialError);
-      }
+      console.log(`\u2705 New user created: ${newUser.id} (${email}) - Free plan (no subscription)`);
       const protocol = req.protocol;
       const host = req.get("host");
       const baseUrl = `${protocol}://${host}`;
@@ -2937,7 +3077,9 @@ router7.get("/verify", async (req, res) => {
   }
   try {
     const decoded = jwt4.verify(token, JWT_SECRET);
-    await db.update(users).set({ verified: true }).where(eq3(users.id, decoded.userId));
+    const response = await db.update(users).set({ verified: true }).where(eq3(users.id, decoded.userId)).returning();
+    const userdata = response[0];
+    await sendWelcomeEmail(userdata.email, userdata.name);
     res.redirect(`${CLIENT_URL}/login?verified=true`);
   } catch (err) {
     console.error("Verification error:", err);
@@ -3882,33 +4024,12 @@ passport.use(
             name,
             provider: "google",
             passwordHash: "",
-            // No password for OAuth users
             profilePicture: photo,
             verified: true
-            // Google accounts are pre-verified
           }).returning();
           user = newUser;
-          console.log(`\u2728 New Google user created: ${email} (ID: ${user.id})`);
-          try {
-            const trialEndDate = /* @__PURE__ */ new Date();
-            trialEndDate.setDate(trialEndDate.getDate() + 7);
-            await db.insert(subscriptions).values({
-              userId: user.id,
-              stripeSubscriptionId: null,
-              stripeCustomerId: null,
-              stripePriceId: null,
-              status: "free_trial",
-              plan: "free",
-              currentPeriodStart: /* @__PURE__ */ new Date(),
-              currentPeriodEnd: trialEndDate,
-              cancelAtPeriodEnd: false,
-              trialStart: /* @__PURE__ */ new Date(),
-              trialEnd: trialEndDate
-            });
-            console.log(`\u2705 Created free 7-day trial for Google user ${user.id} (${email})`);
-          } catch (trialError) {
-            console.error("\u26A0\uFE0F Failed to create free trial for Google user:", trialError);
-          }
+          console.log(`\u2728 New Google user created: ${email} (ID: ${user.id}) - Free plan (no subscription)`);
+          await sendWelcomeEmail(email, newUser.name);
         }
         return done(null, user);
       } catch (err) {
@@ -4365,13 +4486,84 @@ var huggingFace_default = router17;
 
 // routes/apis/imagegeneration/gemini.ts
 import { GoogleGenAI } from "@google/genai";
+import { GoogleGenerativeAI as GoogleGenerativeAI2 } from "@google/generative-ai";
 import { Router as Router15 } from "express";
 var router18 = Router15();
+var genAI2 = new GoogleGenerativeAI2(process.env.GEMINI_API_KEY || "");
+var textModel = genAI2.getGenerativeModel({ model: "gemini-pro" });
+function getSystemPromptForModel(modelType) {
+  switch (modelType) {
+    case "flux-realism":
+      return "You are an expert at creating photorealistic image prompts. Enhance prompts with realistic details, proper lighting (golden hour, soft natural light, etc.), camera settings (depth of field, bokeh), and natural elements.";
+    case "flux-anime":
+      return "You are an expert at creating anime-style image prompts. Enhance prompts with anime aesthetics, character details (expressive eyes, dynamic poses), vibrant colors, cel-shading, and manga/anime art style elements.";
+    case "turbo":
+      return "You are an expert at creating creative and artistic image prompts for the Nano Banana (Turbo) model. This model excels at fast, experimental, and creative outputs. Enhance prompts with imaginative details, unique artistic styles, bold colors, surreal elements, and experimental visual concepts.";
+    case "imagen-3":
+    case "imagen-4":
+      return "You are an expert at creating prompts for Google's Imagen model. Enhance prompts with photorealistic details, natural lighting, vivid colors, and precise composition descriptions. Focus on clarity and visual accuracy.";
+    case "flux":
+    default:
+      return "You are an expert at creating detailed image generation prompts. Enhance prompts with vivid descriptions, artistic elements, visual details, and creative direction.";
+  }
+}
+router18.post("/improve-prompt", async (req, res) => {
+  try {
+    const { prompt, model: model2 } = req.body;
+    if (!prompt || typeof prompt !== "string" || prompt.trim().length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: "Valid prompt is required"
+      });
+    }
+    if (!process.env.GEMINI_API_KEY) {
+      return res.status(500).json({
+        success: false,
+        error: "GEMINI_API_KEY not configured"
+      });
+    }
+    console.log(`[Gemini] Improving prompt for model: ${model2 || "default"}`);
+    const systemPrompt = getSystemPromptForModel(model2);
+    const fullPrompt = `${systemPrompt}
+
+Original prompt: "${prompt}"
+
+Please provide an improved, detailed version of this image generation prompt. Focus on:
+- Adding vivid visual details
+- Specifying lighting, atmosphere, and mood
+- Including artistic style elements
+- Enhancing composition suggestions
+- Adding color palette descriptions
+
+Return ONLY the improved prompt without any explanations or additional text.`;
+    const result = await textModel.generateContent(fullPrompt);
+    const response = await result.response;
+    const improvedPrompt = response.text().trim().replace(/^["']|["']$/g, "").replace(/^```|```$/g, "").trim();
+    console.log(`[Gemini] Prompt improved successfully`);
+    res.json({
+      success: true,
+      improvedPrompt,
+      originalPrompt: prompt
+    });
+  } catch (error) {
+    console.error("[Gemini] Improve prompt error:", error);
+    res.status(500).json({
+      success: false,
+      error: error.message || "Failed to improve prompt"
+    });
+  }
+});
 router18.post("/image-generate", async (req, res) => {
   try {
-    const { prompt, width, height } = req.body;
+    const { prompt, width, height, model: model2 } = req.body;
     if (!prompt) {
       return res.status(400).json({ ok: false, error: "Prompt is required" });
+    }
+    if (!process.env.GEMINI_API_KEY_2) {
+      return res.status(500).json({
+        ok: false,
+        error: "GEMINI_API_KEY_2 not configured"
+      });
     }
     const ai3 = new GoogleGenAI({
       apiKey: process.env.GEMINI_API_KEY_2
@@ -4384,8 +4576,10 @@ router18.post("/image-generate", async (req, res) => {
       else if (ratio > 1.1 && ratio < 1.4) aspectRatio = "4:3";
       else if (ratio > 0.7 && ratio < 0.9) aspectRatio = "3:4";
     }
+    const imagenModel = model2 === "imagen-3" ? "imagen-3.0-generate-002" : "imagen-4.0-generate-001";
+    console.log(`[Gemini] Generating image with ${imagenModel}, aspect ratio: ${aspectRatio}`);
     const response = await ai3.models.generateImages({
-      model: "imagen-4.0-generate-001",
+      model: imagenModel,
       prompt,
       config: {
         numberOfImages: 1,
@@ -4401,10 +4595,21 @@ router18.post("/image-generate", async (req, res) => {
       throw new Error("No image generated");
     }
     const imageBase64 = `data:image/jpeg;base64,${generatedImage.image.imageBytes}`;
-    res.json({ ok: true, image: imageBase64 });
+    console.log(`[Gemini] Image generated successfully`);
+    res.json({
+      ok: true,
+      success: true,
+      image: imageBase64,
+      model: imagenModel,
+      aspectRatio
+    });
   } catch (error) {
-    console.error("Gemini error:", error);
-    res.status(500).json({ ok: false, error: error.message });
+    console.error("[Gemini] Image generation error:", error);
+    res.status(500).json({
+      ok: false,
+      success: false,
+      error: error.message || "Failed to generate image with Gemini"
+    });
   }
 });
 var gemini_default2 = router18;
@@ -6037,11 +6242,77 @@ import multer5 from "multer";
 
 // controllers/veo3/veo3Controller.ts
 import { GoogleGenAI as GoogleGenAI3 } from "@google/genai";
-import { eq as eq9, desc as desc2 } from "drizzle-orm";
+import { eq as eq10, desc as desc3 } from "drizzle-orm";
 import { v2 as cloudinary3 } from "cloudinary";
 import fs12 from "fs";
 import path13 from "path";
 import { fileURLToPath as fileURLToPath2 } from "url";
+
+// utils/usageHelper.ts
+import { eq as eq9, desc as desc2 } from "drizzle-orm";
+var PLAN_LIMITS = {
+  free: { aiGenerationsPerDay: 1, requiresTracking: true },
+  starter: { aiGenerationsPerDay: 20, requiresTracking: true },
+  pro: { aiGenerationsPerDay: Infinity, requiresTracking: false },
+  team: { aiGenerationsPerDay: Infinity, requiresTracking: false },
+  lifetime: { aiGenerationsPerDay: Infinity, requiresTracking: false }
+};
+async function getOrCreateUsageTracking(userId) {
+  let [usage] = await db.select().from(usageTracking).where(eq9(usageTracking.userId, userId));
+  if (!usage) {
+    [usage] = await db.insert(usageTracking).values({
+      userId,
+      videosThisMonth: 0,
+      aiGenerationsToday: 0,
+      lastVideoReset: /* @__PURE__ */ new Date(),
+      lastAiReset: /* @__PURE__ */ new Date()
+    }).returning();
+  }
+  return usage;
+}
+function needsDailyReset(lastReset) {
+  return (/* @__PURE__ */ new Date()).toDateString() !== lastReset.toDateString();
+}
+async function getUserPlan(userId) {
+  const [subscription] = await db.select().from(subscriptions).where(eq9(subscriptions.userId, userId)).orderBy(desc2(subscriptions.createdAt)).limit(1);
+  if (!subscription) return "free";
+  if (subscription.isLifetime) return "lifetime";
+  if (subscription.status === "active") return subscription.plan;
+  return "free";
+}
+async function checkAIGenerationAllowed(userId) {
+  const plan = await getUserPlan(userId);
+  const config2 = PLAN_LIMITS[plan] || PLAN_LIMITS.free;
+  if (!config2.requiresTracking) return { allowed: true, unlimited: true, used: 0, limit: Infinity, plan };
+  let usage = await getOrCreateUsageTracking(userId);
+  if (needsDailyReset(usage.lastAiReset)) {
+    [usage] = await db.update(usageTracking).set({ aiGenerationsToday: 0, lastAiReset: /* @__PURE__ */ new Date(), updatedAt: /* @__PURE__ */ new Date() }).where(eq9(usageTracking.userId, userId)).returning();
+  }
+  return {
+    allowed: usage.aiGenerationsToday < config2.aiGenerationsPerDay,
+    used: usage.aiGenerationsToday,
+    limit: config2.aiGenerationsPerDay,
+    plan,
+    unlimited: false
+  };
+}
+async function incrementAIGeneration(userId) {
+  const plan = await getUserPlan(userId);
+  const config2 = PLAN_LIMITS[plan] || PLAN_LIMITS.free;
+  if (!config2.requiresTracking) return true;
+  let usage = await getOrCreateUsageTracking(userId);
+  if (needsDailyReset(usage.lastAiReset)) {
+    usage.aiGenerationsToday = 0;
+  }
+  await db.update(usageTracking).set({
+    aiGenerationsToday: usage.aiGenerationsToday + 1,
+    lastAiReset: /* @__PURE__ */ new Date(),
+    updatedAt: /* @__PURE__ */ new Date()
+  }).where(eq9(usageTracking.userId, userId));
+  return true;
+}
+
+// controllers/veo3/veo3Controller.ts
 var ai2 = new GoogleGenAI3({ apiKey: process.env.GEMINI_API_KEY });
 var __filename2 = fileURLToPath2(import.meta.url);
 var __dirname2 = path13.dirname(__filename2);
@@ -6059,6 +6330,10 @@ var generateVideo = async (req, res) => {
     const { prompt, model: model2, duration, aspectRatio, referenceType } = req.body;
     if (!prompt || prompt.trim().length === 0) {
       return res.status(400).json({ success: false, error: "Prompt is required" });
+    }
+    const usageCheck = await checkAIGenerationAllowed(userId);
+    if (!usageCheck.allowed) {
+      return res.status(429).json({ success: false, error: "AI generation limit reached", usageInfo: usageCheck });
     }
     const file = req.file;
     let referenceImageUrl = null;
@@ -6110,7 +6385,8 @@ var generateVideo = async (req, res) => {
       durationSeconds,
       ratio,
       referenceImageUrl,
-      refType
+      refType,
+      userId
     ).catch((error) => {
       console.error(
         `[VEO3] Async processing error for ${generation.id}:`,
@@ -6125,13 +6401,13 @@ var generateVideo = async (req, res) => {
     });
   }
 };
-async function processVideoGeneration2(generationId, prompt, model2, duration, aspectRatio, referenceImageUrl, referenceType) {
+async function processVideoGeneration2(generationId, prompt, model2, duration, aspectRatio, referenceImageUrl, referenceType, userId) {
   try {
     console.log(`[VEO3] Starting generation for: ${generationId}`);
     console.log(
       `[VEO3] Model: ${model2}, Duration: ${duration}s, Aspect: ${aspectRatio}`
     );
-    await db.update(veo3Generations).set({ status: "processing" }).where(eq9(veo3Generations.id, generationId));
+    await db.update(veo3Generations).set({ status: "processing" }).where(eq10(veo3Generations.id, generationId));
     const config2 = {
       aspectRatio,
       durationSeconds: duration,
@@ -6203,14 +6479,17 @@ async function processVideoGeneration2(generationId, prompt, model2, duration, a
         referenceImageUsed: !!referenceImageUrl,
         referenceType
       }
-    }).where(eq9(veo3Generations.id, generationId));
+    }).where(eq10(veo3Generations.id, generationId));
+    if (userId) {
+      await incrementAIGeneration(userId);
+    }
     console.log(`[VEO3] \u2705 Completed: ${generationId}`);
   } catch (error) {
     console.error(`[VEO3] \u274C Error:`, error);
     await db.update(veo3Generations).set({
       status: "failed",
       errorMessage: error instanceof Error ? error.message : "Unknown error"
-    }).where(eq9(veo3Generations.id, generationId));
+    }).where(eq10(veo3Generations.id, generationId));
   }
 }
 var getGenerations = async (req, res) => {
@@ -6222,7 +6501,7 @@ var getGenerations = async (req, res) => {
     }
     const limit = parseInt(req.query.limit) || 20;
     const offset = parseInt(req.query.offset) || 0;
-    const generations = await db.select().from(veo3Generations).where(eq9(veo3Generations.userId, userId)).orderBy(desc2(veo3Generations.createdAt)).limit(limit).offset(offset);
+    const generations = await db.select().from(veo3Generations).where(eq10(veo3Generations.userId, userId)).orderBy(desc3(veo3Generations.createdAt)).limit(limit).offset(offset);
     res.json({ success: true, generations });
   } catch (error) {
     console.error("[VEO3] Get generations error:", error);
@@ -6237,7 +6516,7 @@ var getGenerationById = async (req, res) => {
       return res.status(401).json({ success: false, error: "Unauthorized" });
     }
     const { id } = req.params;
-    const [generation] = await db.select().from(veo3Generations).where(eq9(veo3Generations.id, id));
+    const [generation] = await db.select().from(veo3Generations).where(eq10(veo3Generations.id, id));
     if (!generation) {
       return res.status(404).json({ success: false, error: "Generation not found" });
     }
@@ -6258,7 +6537,7 @@ var deleteGeneration = async (req, res) => {
       return res.status(401).json({ success: false, error: "Unauthorized" });
     }
     const { id } = req.params;
-    const [generation] = await db.select().from(veo3Generations).where(eq9(veo3Generations.id, id));
+    const [generation] = await db.select().from(veo3Generations).where(eq10(veo3Generations.id, id));
     if (!generation) {
       return res.status(404).json({ success: false, error: "Generation not found" });
     }
@@ -6288,7 +6567,7 @@ var deleteGeneration = async (req, res) => {
         console.error("[VEO3] Cloudinary deletion error:", cloudError);
       }
     }
-    await db.delete(veo3Generations).where(eq9(veo3Generations.id, id));
+    await db.delete(veo3Generations).where(eq10(veo3Generations.id, id));
     res.json({ success: true, message: "Generation deleted successfully" });
   } catch (error) {
     console.error("[VEO3] Delete generation error:", error);
@@ -6315,7 +6594,7 @@ import express7 from "express";
 
 // controllers/youtube/youtubeController.ts
 import ytDlpExec from "yt-dlp-exec";
-import { eq as eq10, desc as desc3 } from "drizzle-orm";
+import { eq as eq11, desc as desc4 } from "drizzle-orm";
 import { v2 as cloudinary4 } from "cloudinary";
 import fs14 from "fs";
 import path14 from "path";
@@ -6467,7 +6746,7 @@ var downloadVideo = async (req, res) => {
 async function processVideoDownload(downloadId, url, quality, videoInfo) {
   try {
     console.log(`[YouTube] Processing download: ${downloadId}`);
-    await db.update(youtubeDownloads).set({ status: "processing" }).where(eq10(youtubeDownloads.id, downloadId));
+    await db.update(youtubeDownloads).set({ status: "processing" }).where(eq11(youtubeDownloads.id, downloadId));
     const outputsDir2 = path14.join(__dirname3, "../../outputs");
     if (!fs14.existsSync(outputsDir2)) {
       fs14.mkdirSync(outputsDir2, { recursive: true });
@@ -6531,14 +6810,14 @@ async function processVideoDownload(downloadId, url, quality, videoInfo) {
         width: cloudinaryResult.width,
         height: cloudinaryResult.height
       }
-    }).where(eq10(youtubeDownloads.id, downloadId));
+    }).where(eq11(youtubeDownloads.id, downloadId));
     console.log(`[YouTube] \u2705 Download completed: ${downloadId}`);
   } catch (error) {
     console.error(`[YouTube] \u274C Processing error:`, error);
     await db.update(youtubeDownloads).set({
       status: "failed",
       errorMessage: error instanceof Error ? error.message : "Unknown error"
-    }).where(eq10(youtubeDownloads.id, downloadId));
+    }).where(eq11(youtubeDownloads.id, downloadId));
   }
 }
 var getDownloads = async (req, res) => {
@@ -6550,7 +6829,7 @@ var getDownloads = async (req, res) => {
     }
     const limit = parseInt(req.query.limit) || 20;
     const offset = parseInt(req.query.offset) || 0;
-    const downloads = await db.select().from(youtubeDownloads).where(eq10(youtubeDownloads.userId, userId)).orderBy(desc3(youtubeDownloads.createdAt)).limit(limit).offset(offset);
+    const downloads = await db.select().from(youtubeDownloads).where(eq11(youtubeDownloads.userId, userId)).orderBy(desc4(youtubeDownloads.createdAt)).limit(limit).offset(offset);
     res.json({ success: true, downloads });
   } catch (error) {
     console.error("[YouTube] Get downloads error:", error);
@@ -6565,7 +6844,7 @@ var getDownloadById = async (req, res) => {
       return res.status(401).json({ success: false, error: "Unauthorized" });
     }
     const { id } = req.params;
-    const [download] = await db.select().from(youtubeDownloads).where(eq10(youtubeDownloads.id, id));
+    const [download] = await db.select().from(youtubeDownloads).where(eq11(youtubeDownloads.id, id));
     if (!download) {
       return res.status(404).json({ success: false, error: "Download not found" });
     }
@@ -6586,7 +6865,7 @@ var deleteDownload = async (req, res) => {
       return res.status(401).json({ success: false, error: "Unauthorized" });
     }
     const { id } = req.params;
-    const [download] = await db.select().from(youtubeDownloads).where(eq10(youtubeDownloads.id, id));
+    const [download] = await db.select().from(youtubeDownloads).where(eq11(youtubeDownloads.id, id));
     if (!download) {
       return res.status(404).json({ success: false, error: "Download not found" });
     }
@@ -6601,7 +6880,7 @@ var deleteDownload = async (req, res) => {
         console.error("[YouTube] Cloudinary deletion error:", cloudError);
       }
     }
-    await db.delete(youtubeDownloads).where(eq10(youtubeDownloads.id, id));
+    await db.delete(youtubeDownloads).where(eq11(youtubeDownloads.id, id));
     res.json({ success: true, message: "Download deleted successfully" });
   } catch (error) {
     console.error("[YouTube] Delete download error:", error);
@@ -6698,8 +6977,274 @@ var saveImage_default = router28;
 import { Router as Router21 } from "express";
 
 // controllers/imageGen/imageGenController.ts
-import { eq as eq11, desc as desc4 } from "drizzle-orm";
+import { eq as eq12, desc as desc5 } from "drizzle-orm";
 import axios5 from "axios";
+import { GoogleGenerativeAI as GoogleGenerativeAI4 } from "@google/generative-ai";
+
+// services/nanoBanana.service.ts
+import { GoogleGenerativeAI as GoogleGenerativeAI3 } from "@google/generative-ai";
+var NanoBananaService = class {
+  apiKeys;
+  currentKeyIndex = 0;
+  constructor() {
+    const key1 = process.env.GEMINI_API_KEY || "";
+    const key2 = process.env.GEMINI_API_KEY_2 || "";
+    this.apiKeys = [key1, key2].filter((key) => key.length > 0);
+    if (this.apiKeys.length === 0) {
+      console.warn("\u26A0\uFE0F No GEMINI_API_KEY found in environment variables");
+    } else {
+      console.log(`\u2705 Loaded ${this.apiKeys.length} Gemini API key(s) for Nano Banana`);
+    }
+  }
+  /**
+   * Get the current API key
+   */
+  getCurrentApiKey() {
+    if (this.apiKeys.length === 0) {
+      throw new Error("No Gemini API keys configured");
+    }
+    return this.apiKeys[this.currentKeyIndex % this.apiKeys.length];
+  }
+  /**
+   * Rotate to the next API key (for fallback on rate limit)
+   */
+  rotateApiKey() {
+    if (this.apiKeys.length > 1) {
+      this.currentKeyIndex = (this.currentKeyIndex + 1) % this.apiKeys.length;
+      console.log(`\u{1F504} [NanoBanana] Rotated to API key #${this.currentKeyIndex + 1}`);
+    }
+  }
+  /**
+   * Convert aspect ratio to dimensions (for logging/metadata)
+   */
+  getImageDimensions(aspectRatio) {
+    switch (aspectRatio) {
+      case "9:16":
+        return { width: 512, height: 912 };
+      case "16:9":
+        return { width: 912, height: 512 };
+      case "1:1":
+        return { width: 1024, height: 1024 };
+      case "4:5":
+        return { width: 720, height: 900 };
+      default:
+        return { width: 512, height: 912 };
+    }
+  }
+  /**
+   * Validate if the model is supported for image generation
+   */
+  isValidModel(model2) {
+    const validModels = [
+      "gemini-2.5-flash-image",
+      "gemini-2.5-flash-image-preview",
+      "gemini-3-pro-image-preview",
+      "nano-banana-pro-preview"
+    ];
+    return validModels.includes(model2);
+  }
+  /**
+   * Generate image using a specific API key
+   */
+  async generateWithKey(apiKey, prompt, model2, aspectRatio) {
+    const genAI4 = new GoogleGenerativeAI3(apiKey);
+    const imageModel = genAI4.getGenerativeModel({ model: model2 });
+    const result = await imageModel.generateContent({
+      contents: [
+        {
+          role: "user",
+          parts: [
+            {
+              text: `Generate an image with the following description: ${prompt}. The aspect ratio should be ${aspectRatio}.`
+            }
+          ]
+        }
+      ],
+      generationConfig: {
+        temperature: 1,
+        topK: 40,
+        topP: 0.95,
+        maxOutputTokens: 8192
+      }
+    });
+    const response = await result.response;
+    if (!response.candidates || response.candidates.length === 0) {
+      throw new Error("No image generated from API");
+    }
+    const candidate = response.candidates[0];
+    if (candidate.content?.parts) {
+      for (const part of candidate.content.parts) {
+        if (part.inlineData?.data) {
+          const base64Image = part.inlineData.data;
+          const mimeType = part.inlineData.mimeType || "image/png";
+          return `data:${mimeType};base64,${base64Image}`;
+        }
+      }
+    }
+    const textContent = response.text();
+    if (textContent) {
+      try {
+        const jsonResponse = JSON.parse(textContent);
+        if (jsonResponse.image || jsonResponse.imageUrl) {
+          return jsonResponse.image || jsonResponse.imageUrl;
+        }
+      } catch (parseError) {
+      }
+    }
+    throw new Error("No image data found in response");
+  }
+  /**
+   * Main method to generate image with automatic fallback
+   */
+  async generateImage(params) {
+    try {
+      const { prompt, model: model2, aspectRatio } = params;
+      if (!this.isValidModel(model2)) {
+        return {
+          success: false,
+          error: `Invalid model: ${model2}. Supported models: gemini-2.5-flash-image, gemini-2.5-flash-image-preview, gemini-3-pro-image-preview, nano-banana-pro-preview`
+        };
+      }
+      const { width, height } = this.getImageDimensions(aspectRatio);
+      console.log(`\u{1F34C} [NanoBanana] Generating image with model: ${model2}`);
+      console.log(`\u{1F4D0} [NanoBanana] Dimensions: ${width}x${height}`);
+      console.log(`\u270F\uFE0F [NanoBanana] Prompt: ${prompt.substring(0, 100)}...`);
+      try {
+        const currentKey = this.getCurrentApiKey();
+        const imageUrl = await this.generateWithKey(
+          currentKey,
+          prompt,
+          model2,
+          aspectRatio
+        );
+        console.log(`\u2705 [NanoBanana] Image generated successfully`);
+        return {
+          success: true,
+          imageUrl
+        };
+      } catch (primaryError) {
+        console.error(`\u274C [NanoBanana] Primary key failed:`, primaryError.message);
+        if (this.apiKeys.length > 1) {
+          console.log(`\u{1F504} [NanoBanana] Trying fallback API key...`);
+          this.rotateApiKey();
+          try {
+            const fallbackKey = this.getCurrentApiKey();
+            const imageUrl = await this.generateWithKey(
+              fallbackKey,
+              prompt,
+              model2,
+              aspectRatio
+            );
+            console.log(`\u2705 [NanoBanana] Image generated with fallback key`);
+            return {
+              success: true,
+              imageUrl
+            };
+          } catch (fallbackError) {
+            console.error(`\u274C [NanoBanana] Fallback key also failed:`, fallbackError.message);
+            throw fallbackError;
+          }
+        }
+        throw primaryError;
+      }
+    } catch (error) {
+      console.error(`\u274C [NanoBanana] Generation error:`, error);
+      let errorMessage = "Failed to generate image";
+      if (error.message?.includes("API key") || error.message?.includes("401")) {
+        errorMessage = "Invalid API key. Please check your Gemini API configuration.";
+      } else if (error.message?.includes("quota") || error.message?.includes("rate limit") || error.message?.includes("429")) {
+        errorMessage = "Rate limit exceeded. Please try again in a few moments.";
+      } else if (error.message?.includes("model") || error.message?.includes("404")) {
+        errorMessage = `Model not available or not supported for image generation.`;
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      return {
+        success: false,
+        error: errorMessage
+      };
+    }
+  }
+  /**
+   * Test if API keys are valid
+   */
+  async testApiKeys() {
+    const results = {
+      primary: false,
+      secondary: false
+    };
+    if (this.apiKeys.length > 0) {
+      try {
+        const genAI4 = new GoogleGenerativeAI3(this.apiKeys[0]);
+        const model2 = genAI4.getGenerativeModel({ model: "gemini-2.5-flash" });
+        await model2.generateContent("test");
+        results.primary = true;
+        console.log("\u2705 [NanoBanana] Primary API key is valid");
+      } catch (error) {
+        console.error("\u274C [NanoBanana] Primary API key is invalid");
+      }
+    }
+    if (this.apiKeys.length > 1) {
+      try {
+        const genAI4 = new GoogleGenerativeAI3(this.apiKeys[1]);
+        const model2 = genAI4.getGenerativeModel({ model: "gemini-2.5-flash" });
+        await model2.generateContent("test");
+        results.secondary = true;
+        console.log("\u2705 [NanoBanana] Secondary API key is valid");
+      } catch (error) {
+        console.error("\u274C [NanoBanana] Secondary API key is invalid");
+      }
+    }
+    return results;
+  }
+  /**
+   * Get list of supported models
+   */
+  getSupportedModels() {
+    return [
+      "gemini-2.5-flash-image",
+      "gemini-2.5-flash-image-preview",
+      "gemini-3-pro-image-preview",
+      "nano-banana-pro-preview"
+    ];
+  }
+  /**
+   * Get current API key status
+   */
+  getStatus() {
+    return {
+      keysConfigured: this.apiKeys.length,
+      currentKeyIndex: this.currentKeyIndex,
+      supportedModels: this.getSupportedModels()
+    };
+  }
+};
+var nanoBananaService = new NanoBananaService();
+
+// controllers/imageGen/imageGenController.ts
+var genAI3 = new GoogleGenerativeAI4(process.env.GEMINI_API_KEY || "");
+var textModel2 = genAI3.getGenerativeModel({ model: "gemini-2.5-flash" });
+function getSystemPromptForModel2(modelType) {
+  switch (modelType) {
+    case "flux-realism":
+      return "You are an expert at creating photorealistic image prompts. Enhance prompts with realistic details, proper lighting (golden hour, soft natural light, etc.), camera settings (depth of field, bokeh), and natural elements.";
+    case "flux-anime":
+      return "You are an expert at creating anime-style image prompts. Enhance prompts with anime aesthetics, character details (expressive eyes, dynamic poses), vibrant colors, cel-shading, and manga/anime art style elements.";
+    case "turbo":
+      return "You are an expert at creating creative and artistic image prompts for the Turbo model. This model excels at fast, experimental, and creative outputs. Enhance prompts with imaginative details, unique artistic styles, bold colors, surreal elements, and experimental visual concepts.";
+    case "gemini-2.5-flash-image":
+    case "gemini-2.5-flash-image-preview":
+    case "gemini-3-pro-image-preview":
+    case "nano-banana-pro-preview":
+      return "You are an expert at creating prompts for Google's Gemini image generation models (Nano Banana). Enhance prompts with photorealistic details, artistic elements, vivid colors, precise composition descriptions, and creative visual concepts.";
+    case "imagen-3":
+    case "imagen-4":
+      return "You are an expert at creating prompts for Google's Imagen model. Enhance prompts with photorealistic details, natural lighting, vivid colors, and precise composition descriptions. Focus on clarity and visual accuracy.";
+    case "flux":
+    default:
+      return "You are an expert at creating detailed image generation prompts. Enhance prompts with vivid descriptions, artistic elements, visual details, and creative direction.";
+  }
+}
 var saveImageGeneration = async (req, res) => {
   try {
     const authUser = req.user;
@@ -6709,35 +7254,52 @@ var saveImageGeneration = async (req, res) => {
     }
     const { prompt, model: model2, aspectRatio, imageUrl } = req.body;
     if (!prompt || !model2 || !aspectRatio || !imageUrl) {
-      return res.status(400).json({
-        success: false,
-        error: "Missing required fields"
-      });
+      return res.status(400).json({ success: false, error: "Missing required fields" });
+    }
+    const usageCheck = await checkAIGenerationAllowed(userId);
+    if (!usageCheck.allowed) {
+      return res.status(429).json({ success: false, error: "AI generation limit reached", usageInfo: usageCheck });
     }
     let permanentUrl = imageUrl;
-    try {
-      const imageResponse = await axios5.get(imageUrl, {
-        responseType: "arraybuffer",
-        timeout: 3e4
-      });
-      const imageBuffer = Buffer.from(imageResponse.data);
-      const uploadResult = await new Promise((resolve, reject) => {
-        const stream = cloudinaryClient_default.uploader.upload_stream(
-          {
-            folder: "ai_image_generations",
-            resource_type: "image"
-          },
-          (error, result) => {
-            if (error) reject(error);
-            else resolve(result);
-          }
-        );
-        stream.end(imageBuffer);
-      });
-      permanentUrl = uploadResult.secure_url;
-      console.log("[ImageGen] Uploaded to Cloudinary:", permanentUrl);
-    } catch (uploadErr) {
-      console.error("[ImageGen] Cloudinary upload failed, using original URL:", uploadErr);
+    if (imageUrl.includes("cloudinary.com")) {
+      permanentUrl = imageUrl;
+    } else if (imageUrl.startsWith("data:image")) {
+      try {
+        console.log("[ImageGen] Uploading base64 image to Cloudinary...");
+        const uploadResult = await cloudinaryClient_default.uploader.upload(imageUrl, {
+          folder: "ai_image_generations",
+          resource_type: "image"
+        });
+        permanentUrl = uploadResult.secure_url;
+        console.log("[ImageGen] \u2705 Base64 uploaded to Cloudinary:", permanentUrl);
+      } catch (uploadErr) {
+        console.error("[ImageGen] \u274C Cloudinary upload failed for base64:", uploadErr);
+        console.warn("[ImageGen] \u26A0\uFE0F Using base64 URL as fallback");
+      }
+    } else {
+      try {
+        console.log("[ImageGen] Downloading and uploading URL to Cloudinary...");
+        const imageResponse = await axios5.get(imageUrl, {
+          responseType: "arraybuffer",
+          timeout: 3e4
+        });
+        const imageBuffer = Buffer.from(imageResponse.data);
+        const uploadResult = await new Promise((resolve, reject) => {
+          const stream = cloudinaryClient_default.uploader.upload_stream(
+            { folder: "ai_image_generations", resource_type: "image" },
+            (error, result) => {
+              if (error) reject(error);
+              else resolve(result);
+            }
+          );
+          stream.end(imageBuffer);
+        });
+        permanentUrl = uploadResult.secure_url;
+        console.log("[ImageGen] \u2705 URL uploaded to Cloudinary:", permanentUrl);
+      } catch (uploadErr) {
+        console.error("[ImageGen] \u274C Cloudinary upload failed for URL:", uploadErr);
+        console.warn("[ImageGen] \u26A0\uFE0F Using original URL as fallback");
+      }
     }
     const [generation] = await db.insert(imageGenerations).values({
       userId,
@@ -6748,20 +7310,16 @@ var saveImageGeneration = async (req, res) => {
       status: "completed",
       metadata: {
         originalUrl: imageUrl,
-        uploadedToCloudinary: permanentUrl !== imageUrl
+        uploadedToCloudinary: permanentUrl !== imageUrl && !imageUrl.includes("cloudinary.com"),
+        isBase64: imageUrl.startsWith("data:image")
       }
     }).returning();
-    console.log(`[ImageGen] Saved generation: ${generation.id}`);
-    res.status(201).json({
-      success: true,
-      generation
-    });
+    await incrementAIGeneration(userId);
+    console.log(`[ImageGen] \u2705 Saved generation: ${generation.id}`);
+    res.status(201).json({ success: true, generation });
   } catch (error) {
-    console.error("[ImageGen] Save error:", error);
-    res.status(500).json({
-      success: false,
-      error: "Failed to save image generation"
-    });
+    console.error("[ImageGen] \u274C Save error:", error);
+    res.status(500).json({ success: false, error: "Failed to save image generation" });
   }
 };
 var getGenerations2 = async (req, res) => {
@@ -6773,14 +7331,11 @@ var getGenerations2 = async (req, res) => {
     }
     const limit = parseInt(req.query.limit) || 20;
     const offset = parseInt(req.query.offset) || 0;
-    const generations = await db.select().from(imageGenerations).where(eq11(imageGenerations.userId, userId)).orderBy(desc4(imageGenerations.createdAt)).limit(limit).offset(offset);
+    const generations = await db.select().from(imageGenerations).where(eq12(imageGenerations.userId, userId)).orderBy(desc5(imageGenerations.createdAt)).limit(limit).offset(offset);
     res.json({ success: true, generations });
   } catch (error) {
     console.error("[ImageGen] Get generations error:", error);
-    res.status(500).json({
-      success: false,
-      error: "Failed to fetch generations"
-    });
+    res.status(500).json({ success: false, error: "Failed to fetch generations" });
   }
 };
 var deleteGeneration2 = async (req, res) => {
@@ -6791,12 +7346,9 @@ var deleteGeneration2 = async (req, res) => {
       return res.status(401).json({ success: false, error: "Unauthorized" });
     }
     const { id } = req.params;
-    const [generation] = await db.select().from(imageGenerations).where(eq11(imageGenerations.id, id));
+    const [generation] = await db.select().from(imageGenerations).where(eq12(imageGenerations.id, id));
     if (!generation) {
-      return res.status(404).json({
-        success: false,
-        error: "Generation not found"
-      });
+      return res.status(404).json({ success: false, error: "Generation not found" });
     }
     if (generation.userId !== userId) {
       return res.status(403).json({ success: false, error: "Forbidden" });
@@ -6813,13 +7365,93 @@ var deleteGeneration2 = async (req, res) => {
         console.error("[ImageGen] Cloudinary deletion error:", cloudError);
       }
     }
-    await db.delete(imageGenerations).where(eq11(imageGenerations.id, id));
+    await db.delete(imageGenerations).where(eq12(imageGenerations.id, id));
     res.json({ success: true, message: "Generation deleted successfully" });
   } catch (error) {
     console.error("[ImageGen] Delete generation error:", error);
-    res.status(500).json({
+    res.status(500).json({ success: false, error: "Failed to delete generation" });
+  }
+};
+var improvePrompt = async (req, res) => {
+  try {
+    const authUser = req.user;
+    const userId = authUser?.id ?? authUser?.userId;
+    if (!userId) {
+      return res.status(401).json({ success: false, error: "Unauthorized" });
+    }
+    const { prompt, model: model2 } = req.body;
+    if (!prompt || typeof prompt !== "string" || prompt.trim().length === 0) {
+      return res.status(400).json({ success: false, error: "Valid prompt is required" });
+    }
+    if (!process.env.GEMINI_API_KEY) {
+      return res.status(500).json({ success: false, error: "GEMINI_API_KEY not configured" });
+    }
+    console.log(`[ImageGen] Improving prompt for model: ${model2 || "default"}`);
+    const systemPrompt = getSystemPromptForModel2(model2);
+    const fullPrompt = `${systemPrompt}
+
+Original prompt: "${prompt}"
+
+Please provide an improved, detailed version of this image generation prompt. Focus on:
+- Adding vivid visual details
+- Specifying lighting, atmosphere, and mood
+- Including artistic style elements
+- Enhancing composition suggestions
+- Adding color palette descriptions
+
+Return ONLY the improved prompt without any explanations or additional text.`;
+    const result = await textModel2.generateContent(fullPrompt);
+    const response = await result.response;
+    const improvedPrompt = response.text().trim().replace(/^["']|["']$/g, "").replace(/^```|```$/g, "").trim();
+    console.log(`[ImageGen] Prompt improved successfully`);
+    res.json({ success: true, improvedPrompt, originalPrompt: prompt });
+  } catch (error) {
+    console.error("[ImageGen] Improve prompt error:", error);
+    res.status(500).json({ success: false, error: error.message || "Failed to improve prompt" });
+  }
+};
+var generateWithNanoBanana = async (req, res) => {
+  try {
+    const authUser = req.user;
+    const userId = authUser?.id ?? authUser?.userId;
+    if (!userId) {
+      return res.status(401).json({ success: false, error: "Unauthorized" });
+    }
+    const { prompt, model: model2, aspectRatio } = req.body;
+    if (!prompt || typeof prompt !== "string" || prompt.trim().length === 0) {
+      return res.status(400).json({ success: false, error: "Valid prompt is required" });
+    }
+    if (!model2) {
+      return res.status(400).json({ success: false, error: "Model is required" });
+    }
+    if (!aspectRatio) {
+      return res.status(400).json({ success: false, error: "Aspect ratio is required" });
+    }
+    const usageCheck = await checkAIGenerationAllowed(userId);
+    if (!usageCheck.allowed) {
+      return res.status(429).json({ success: false, error: "AI generation limit reached", usageInfo: usageCheck });
+    }
+    const result = await nanoBananaService.generateImage({
+      prompt: prompt.trim(),
+      model: model2,
+      aspectRatio
+    });
+    if (!result.success) {
+      return res.status(500).json({
+        success: false,
+        error: result.error || "Failed to generate image"
+      });
+    }
+    await incrementAIGeneration(userId);
+    return res.status(200).json({
+      success: true,
+      imageUrl: result.imageUrl
+    });
+  } catch (error) {
+    console.error("[NanoBanana] Controller error:", error);
+    return res.status(500).json({
       success: false,
-      error: "Failed to delete generation"
+      error: error.message || "Failed to generate image with Nano Banana"
     });
   }
 };
@@ -6830,115 +7462,53 @@ router29.use(requireAuth);
 router29.post("/save", saveImageGeneration);
 router29.get("/generations", getGenerations2);
 router29.delete("/generations/:id", deleteGeneration2);
+router29.post("/improve-prompt", improvePrompt);
+router29.post("/nano-banana", generateWithNanoBanana);
 var imageGen_default = router29;
 
 // routes/subscription.ts
 import express9 from "express";
 
 // controllers/subscription/subscriptionController.ts
-import { eq as eq12, and as and6, desc as desc5, sql } from "drizzle-orm";
+import { eq as eq13, and as and6, desc as desc6, sql } from "drizzle-orm";
 async function hasLifetimeAccess(userId) {
   const [subscription] = await db.select().from(subscriptions).where(
     and6(
-      eq12(subscriptions.userId, userId),
-      eq12(subscriptions.isLifetime, true),
-      // ✅ CRITICAL: Also check that status is NOT canceled
+      eq13(subscriptions.userId, userId),
+      eq13(subscriptions.isLifetime, true),
       sql`${subscriptions.status} IN ('lifetime', 'company')`
-      // Only these statuses count as active lifetime
     )
   ).limit(1);
   return !!subscription;
 }
-async function syncSubscriptionFromStripe(userId, stripeCustomerId) {
-  try {
-    console.log(`\u{1F504} Syncing subscription from Stripe for user ${userId}...`);
-    const list = await stripe.subscriptions.list({
-      customer: stripeCustomerId,
-      limit: 1
-    });
-    if (list.data.length === 0) {
-      console.log(`\u2139\uFE0F No subscriptions found in Stripe for user ${userId}`);
-      return null;
-    }
-    const subId = list.data[0].id;
-    const stripeSub = await stripe.subscriptions.retrieve(subId);
-    const [existing] = await db.select().from(subscriptions).where(eq12(subscriptions.stripeSubscriptionId, stripeSub.id));
-    if (existing) {
-      console.log(`\u2139\uFE0F Subscription ${stripeSub.id} already in database`);
-      return existing;
-    }
-    const subData = stripeSub;
-    const periodStart = subData.current_period_start || subData.created;
-    const periodEnd = subData.current_period_end;
-    if (!periodStart || !periodEnd) {
-      console.error("\u274C Missing period timestamps");
-      return null;
-    }
-    const toDate = (ts) => {
-      if (!ts) return null;
-      return new Date(Number(ts) * 1e3);
-    };
-    const [newSub] = await db.insert(subscriptions).values({
-      userId,
-      stripeSubscriptionId: subData.id,
-      stripeCustomerId: typeof subData.customer === "string" ? subData.customer : subData.customer?.id || stripeCustomerId,
-      stripePriceId: subData.items?.data?.[0]?.price?.id || "",
-      status: subData.status,
-      plan: "pro",
-      currentPeriodStart: toDate(periodStart),
-      currentPeriodEnd: toDate(periodEnd),
-      cancelAtPeriodEnd: subData.cancel_at_period_end || false,
-      canceledAt: toDate(subData.canceled_at),
-      trialStart: toDate(subData.trial_start),
-      trialEnd: toDate(subData.trial_end)
-    }).returning();
-    console.log(`\u2705 Synced subscription ${subData.id} for user ${userId}`);
-    return newSub;
-  } catch (error) {
-    console.error("\u274C Sync error:", error);
-    return null;
-  }
-}
 async function getActiveSubscription(userId) {
-  const allSubs = await db.select().from(subscriptions).where(eq12(subscriptions.userId, userId)).orderBy(desc5(subscriptions.createdAt));
+  const allSubs = await db.select().from(subscriptions).where(eq13(subscriptions.userId, userId)).orderBy(desc6(subscriptions.createdAt));
   return allSubs.find((sub) => {
     if (sub.status === "lifetime" || sub.status === "company") {
       return sub.isLifetime === true;
     }
-    return sub.status === "active" || sub.status === "trialing" || sub.status === "free_trial";
+    return sub.status === "active";
   });
-}
-async function getLatestSubscription(userId) {
-  const allSubs = await db.select().from(subscriptions).where(eq12(subscriptions.userId, userId)).orderBy(desc5(subscriptions.createdAt));
-  return allSubs.find(
-    (sub) => sub.status === "active" || sub.status === "trialing" || sub.status === "free_trial"
-  );
-}
-async function getPaidSubscription(userId) {
-  const allSubs = await db.select().from(subscriptions).where(eq12(subscriptions.userId, userId)).orderBy(desc5(subscriptions.createdAt));
-  return allSubs.find(
-    (sub) => sub.status === "active" || sub.status === "trialing"
-  );
 }
 var createCheckoutSession = async (req, res) => {
   try {
     const userId = req.user?.userId;
-    const { billingInterval = "monthly" } = req.body;
+    const { plan } = req.body;
     if (!userId) {
       return res.status(401).json({ success: false, error: "Unauthorized" });
     }
-    if (billingInterval !== "monthly" && billingInterval !== "yearly") {
+    if (!plan || !["starter", "pro", "team"].includes(plan)) {
       return res.status(400).json({
         success: false,
-        error: "Invalid billing interval"
+        error: "Invalid plan selected"
       });
     }
-    const [user] = await db.select().from(users).where(eq12(users.id, userId));
+    const [user] = await db.select().from(users).where(eq13(users.id, userId));
     if (!user) {
       return res.status(404).json({ success: false, error: "User not found" });
     }
-    const existingPaidSubscription = await getPaidSubscription(userId);
-    if (existingPaidSubscription) {
+    const existingSubscription = await getActiveSubscription(userId);
+    if (existingSubscription && !existingSubscription.isLifetime) {
       return res.status(400).json({
         success: false,
         error: "You already have an active subscription"
@@ -6952,9 +7522,9 @@ var createCheckoutSession = async (req, res) => {
         metadata: { userId: user.id.toString() }
       });
       customerId = customer.id;
-      await db.update(users).set({ stripeCustomerId: customerId }).where(eq12(users.id, userId));
+      await db.update(users).set({ stripeCustomerId: customerId }).where(eq13(users.id, userId));
     }
-    const priceId = getPriceId(billingInterval);
+    const priceId = getPriceId(plan);
     const session2 = await stripe.checkout.sessions.create({
       customer: customerId,
       mode: "subscription",
@@ -6962,27 +7532,26 @@ var createCheckoutSession = async (req, res) => {
       line_items: [
         {
           price: priceId,
-          // ✅ Use selected price
           quantity: 1
         }
       ],
       subscription_data: {
         metadata: {
           userId: user.id.toString(),
-          billingInterval
-          // ✅ Store interval in metadata
+          plan
+          // ✅ Store plan in metadata
         }
       },
       success_url: `${process.env.CLIENT_URL || process.env.FRONTEND_URL}/dashboard?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${process.env.CLIENT_URL || process.env.FRONTEND_URL}/pricing`,
       metadata: {
         userId: user.id.toString(),
-        billingInterval
-        // ✅ Store interval
+        plan
+        // ✅ Store plan
       }
     });
     console.log(
-      `\u2705 Checkout session created for user ${userId} - ${billingInterval} plan`
+      `\u2705 Checkout session created for user ${userId} - ${plan} plan`
     );
     res.json({ success: true, url: session2.url });
   } catch (error) {
@@ -6996,7 +7565,7 @@ var getSubscriptionStatus = async (req, res) => {
     if (!authUser) {
       return res.status(401).json({ success: false, error: "Unauthorized" });
     }
-    const [user] = await db.select().from(users).where(eq12(users.id, authUser.userId));
+    const [user] = await db.select().from(users).where(eq13(users.id, authUser.userId));
     if (!user) {
       return res.status(404).json({ success: false, error: "User not found" });
     }
@@ -7008,42 +7577,29 @@ var getSubscriptionStatus = async (req, res) => {
         success: true,
         hasSubscription: true,
         status: "lifetime",
-        trialExpired: false,
-        isLifetime: true,
-        billingInterval: null
-        // ✅ No billing for lifetime
+        plan: "lifetime",
+        isLifetime: true
       });
     }
-    let subscription = await getLatestSubscription(user.id);
-    if (!subscription && user.stripeCustomerId) {
-      console.log(`\u{1F504} No subscription in DB, syncing from Stripe...`);
-      subscription = await syncSubscriptionFromStripe(
-        user.id,
-        user.stripeCustomerId
-      );
-    }
-    const now = /* @__PURE__ */ new Date();
-    let hasSubscription = false;
-    let trialExpired = false;
-    if (subscription) {
-      if (subscription.status === "free_trial") {
-        const trialEnd = new Date(
-          subscription.trialEnd || subscription.currentPeriodEnd
-        );
-        trialExpired = now > trialEnd;
-        hasSubscription = !trialExpired;
-      } else {
-        hasSubscription = subscription.status === "active" || subscription.status === "trialing";
-      }
+    const subscription = await getActiveSubscription(user.id);
+    if (!subscription) {
+      console.log(`\u2139\uFE0F User ${user.id} has no subscription - Free plan`);
+      return res.json({
+        success: true,
+        hasSubscription: false,
+        status: null,
+        plan: "free",
+        // ✅ Default to free
+        isLifetime: false
+      });
     }
     res.json({
       success: true,
-      hasSubscription,
-      status: subscription?.status || null,
-      trialExpired,
-      isLifetime: false,
-      billingInterval: subscription?.billingInterval || null
-      // ✅ Include interval
+      hasSubscription: subscription.status === "active",
+      status: subscription.status,
+      plan: subscription.plan,
+      // ✅ Include plan
+      isLifetime: false
     });
   } catch (error) {
     console.error("\u274C Get subscription status error:", error);
@@ -7057,13 +7613,6 @@ var getSubscriptionDetails = async (req, res) => {
       return res.status(401).json({ success: false, error: "Unauthorized" });
     }
     let subscription = await getActiveSubscription(userId);
-    if (!subscription) {
-      const [user] = await db.select().from(users).where(eq12(users.id, userId));
-      if (user && user.stripeCustomerId) {
-        await syncSubscriptionFromStripe(userId, user.stripeCustomerId);
-        subscription = await getActiveSubscription(userId);
-      }
-    }
     if (!subscription) {
       return res.status(404).json({
         success: false,
@@ -7079,7 +7628,6 @@ var getSubscriptionDetails = async (req, res) => {
       canceledAt: subscription.canceledAt?.toISOString() || null,
       createdAt: subscription.createdAt?.toISOString() || (/* @__PURE__ */ new Date()).toISOString(),
       updatedAt: subscription.updatedAt?.toISOString() || (/* @__PURE__ */ new Date()).toISOString(),
-      // ✅ Include lifetime fields
       isLifetime: subscription.isLifetime || false,
       isCompanyAccount: subscription.isCompanyAccount || false,
       companyName: subscription.companyName || null,
@@ -7100,7 +7648,7 @@ var createPortalSession = async (req, res) => {
     if (!userId) {
       return res.status(401).json({ success: false, error: "Unauthorized" });
     }
-    const [user] = await db.select().from(users).where(eq12(users.id, userId));
+    const [user] = await db.select().from(users).where(eq13(users.id, userId));
     if (!user || !user.stripeCustomerId) {
       return res.status(404).json({
         success: false,
@@ -7136,7 +7684,7 @@ var cancelSubscription = async (req, res) => {
     await db.update(subscriptions).set({
       cancelAtPeriodEnd: true,
       updatedAt: /* @__PURE__ */ new Date()
-    }).where(eq12(subscriptions.id, subscription.id));
+    }).where(eq13(subscriptions.id, subscription.id));
     res.json({
       success: true,
       message: "Subscription will cancel at period end"
@@ -7152,7 +7700,7 @@ var reactivateSubscription = async (req, res) => {
     if (!userId) {
       return res.status(401).json({ success: false, error: "Unauthorized" });
     }
-    const subscription = await getLatestSubscription(userId);
+    const subscription = await getActiveSubscription(userId);
     if (!subscription || !subscription.cancelAtPeriodEnd || !subscription.stripeSubscriptionId) {
       return res.status(400).json({
         success: false,
@@ -7166,7 +7714,7 @@ var reactivateSubscription = async (req, res) => {
       cancelAtPeriodEnd: false,
       canceledAt: null,
       updatedAt: /* @__PURE__ */ new Date()
-    }).where(eq12(subscriptions.id, subscription.id));
+    }).where(eq13(subscriptions.id, subscription.id));
     res.json({
       success: true,
       message: "Subscription reactivated"
@@ -7179,16 +7727,16 @@ var reactivateSubscription = async (req, res) => {
 var createSetupIntent = async (req, res) => {
   try {
     const userId = req.user?.userId;
-    const { billingInterval = "monthly" } = req.body;
+    const { plan = "pro" } = req.body;
     if (!userId) {
       return res.status(401).json({ success: false, error: "Unauthorized" });
     }
-    const [user] = await db.select().from(users).where(eq12(users.id, userId));
+    const [user] = await db.select().from(users).where(eq13(users.id, userId));
     if (!user) {
       return res.status(404).json({ success: false, error: "User not found" });
     }
-    const existingPaidSubscription = await getPaidSubscription(userId);
-    if (existingPaidSubscription) {
+    const existingSubscription = await getActiveSubscription(userId);
+    if (existingSubscription) {
       return res.status(400).json({
         success: false,
         error: "You already have an active subscription"
@@ -7202,24 +7750,24 @@ var createSetupIntent = async (req, res) => {
         metadata: { userId: user.id.toString() }
       });
       customerId = customer.id;
-      await db.update(users).set({ stripeCustomerId: customerId }).where(eq12(users.id, userId));
+      await db.update(users).set({ stripeCustomerId: customerId }).where(eq13(users.id, userId));
     }
     const setupIntent = await stripe.setupIntents.create({
       customer: customerId,
       payment_method_types: ["card"],
       metadata: {
         userId: user.id.toString(),
-        billingInterval
-        // ✅ Store interval
+        plan
+        // ✅ Store plan
       }
     });
-    console.log(`\u2705 Setup intent created for user ${userId} - ${billingInterval} plan`);
+    console.log(`\u2705 Setup intent created for user ${userId} - ${plan} plan`);
     res.json({
       success: true,
       clientSecret: setupIntent.client_secret,
       customerId,
       publishableKey: STRIPE_CONFIG.publishableKey,
-      billingInterval
+      plan
       // ✅ Send back to frontend
     });
   } catch (error) {
@@ -7230,31 +7778,23 @@ var createSetupIntent = async (req, res) => {
 var confirmSubscription = async (req, res) => {
   try {
     const userId = req.user?.userId;
-    const { paymentMethodId, billingInterval = "monthly" } = req.body;
+    const { paymentMethodId, plan = "pro" } = req.body;
     if (!userId) {
       return res.status(401).json({ success: false, error: "Unauthorized" });
     }
     if (!paymentMethodId) {
       return res.status(400).json({ success: false, error: "Payment method required" });
     }
-    const [user] = await db.select().from(users).where(eq12(users.id, userId));
+    if (!["starter", "pro", "team"].includes(plan)) {
+      return res.status(400).json({ success: false, error: "Invalid plan" });
+    }
+    const [user] = await db.select().from(users).where(eq13(users.id, userId));
     if (!user || !user.stripeCustomerId) {
       return res.status(404).json({ success: false, error: "Customer not found" });
     }
     console.log(
-      `\u{1F4DD} Confirming ${billingInterval} subscription for user ${userId}...`
+      `\u{1F4DD} Confirming ${plan} subscription for user ${userId}...`
     );
-    const [existingFreeTrial] = await db.select().from(subscriptions).where(
-      and6(
-        eq12(subscriptions.userId, userId),
-        eq12(subscriptions.status, "free_trial")
-      )
-    ).limit(1);
-    const now = /* @__PURE__ */ new Date();
-    const hasActiveTrial = existingFreeTrial?.trialEnd && new Date(existingFreeTrial.trialEnd) > now;
-    if (hasActiveTrial) {
-      console.log(`\u{1F381} User has active free trial until ${existingFreeTrial.trialEnd}`);
-    }
     await stripe.paymentMethods.attach(paymentMethodId, {
       customer: user.stripeCustomerId
     });
@@ -7263,8 +7803,8 @@ var confirmSubscription = async (req, res) => {
         default_payment_method: paymentMethodId
       }
     });
-    const priceId = getPriceId(billingInterval);
-    const subscriptionParams = {
+    const priceId = getPriceId(plan);
+    const subscription = await stripe.subscriptions.create({
       customer: user.stripeCustomerId,
       items: [{ price: priceId }],
       payment_settings: {
@@ -7274,17 +7814,10 @@ var confirmSubscription = async (req, res) => {
       expand: ["latest_invoice.payment_intent"],
       metadata: {
         userId: user.id.toString(),
-        billingInterval
+        plan
+        // ✅ Store plan
       }
-    };
-    if (hasActiveTrial && existingFreeTrial?.trialEnd) {
-      const trialEndTimestamp = Math.floor(
-        new Date(existingFreeTrial.trialEnd).getTime() / 1e3
-      );
-      subscriptionParams.trial_end = trialEndTimestamp;
-      console.log(`\u2705 Preserving trial - will charge on ${existingFreeTrial.trialEnd}`);
-    }
-    const subscription = await stripe.subscriptions.create(subscriptionParams);
+    });
     const subData = subscription;
     const subscriptionItem = subData.items?.data?.[0];
     let periodStart = subscriptionItem?.current_period_start || subData.billing_cycle_anchor || subData.created;
@@ -7312,59 +7845,39 @@ var confirmSubscription = async (req, res) => {
       });
     }
     await new Promise((resolve) => setTimeout(resolve, 2e3));
-    const [webhookCreated] = await db.select().from(subscriptions).where(eq12(subscriptions.stripeSubscriptionId, subscription.id));
+    const [webhookCreated] = await db.select().from(subscriptions).where(eq13(subscriptions.stripeSubscriptionId, subscription.id));
     if (webhookCreated) {
       return res.json({
         success: true,
         subscription: {
           id: subscription.id,
           status: subscription.status,
-          currentPeriodEnd: currentPeriodEnd.toISOString(),
-          billingInterval
+          plan: webhookCreated.plan,
+          currentPeriodEnd: currentPeriodEnd.toISOString()
         }
       });
     }
-    if (existingFreeTrial) {
-      const finalStatus = hasActiveTrial && subscription.status === "trialing" ? "free_trial" : subscription.status;
-      await db.update(subscriptions).set({
-        stripeSubscriptionId: subscription.id,
-        stripeCustomerId: user.stripeCustomerId,
-        stripePriceId: priceId,
-        billingInterval,
-        status: finalStatus,
-        // ✅ Preserve free_trial if still active
-        plan: "pro",
-        currentPeriodStart,
-        currentPeriodEnd,
-        // ✅ Keep trial dates if trial is active
-        trialStart: hasActiveTrial ? existingFreeTrial.trialStart : null,
-        trialEnd: hasActiveTrial ? existingFreeTrial.trialEnd : null,
-        updatedAt: /* @__PURE__ */ new Date()
-      }).where(eq12(subscriptions.id, existingFreeTrial.id));
-      console.log(`\u2705 Updated subscription - status: ${finalStatus}`);
-    } else {
-      await db.insert(subscriptions).values({
-        userId: user.id,
-        stripeSubscriptionId: subscription.id,
-        stripeCustomerId: user.stripeCustomerId,
-        stripePriceId: priceId,
-        billingInterval,
-        status: subscription.status,
-        plan: "pro",
-        currentPeriodStart,
-        currentPeriodEnd,
-        cancelAtPeriodEnd: false,
-        trialStart: toDate(subData.trial_start),
-        trialEnd: toDate(subData.trial_end)
-      });
-    }
+    await db.insert(subscriptions).values({
+      userId: user.id,
+      stripeSubscriptionId: subscription.id,
+      stripeCustomerId: user.stripeCustomerId,
+      stripePriceId: priceId,
+      status: subscription.status,
+      plan,
+      // ✅ Store plan
+      currentPeriodStart,
+      currentPeriodEnd,
+      cancelAtPeriodEnd: false,
+      trialStart: null,
+      trialEnd: null
+    });
     res.json({
       success: true,
       subscription: {
         id: subscription.id,
         status: subscription.status,
-        currentPeriodEnd: currentPeriodEnd.toISOString(),
-        billingInterval
+        plan,
+        currentPeriodEnd: currentPeriodEnd.toISOString()
       }
     });
   } catch (error) {
@@ -7373,379 +7886,8 @@ var confirmSubscription = async (req, res) => {
   }
 };
 
-// controllers/subscription/webhookController.ts
-import { eq as eq13, and as and7 } from "drizzle-orm";
-function safeTimestampToDate(timestamp2) {
-  if (!timestamp2) return null;
-  const ts = Number(timestamp2);
-  if (isNaN(ts) || ts <= 0) return null;
-  const date = new Date(ts * 1e3);
-  if (isNaN(date.getTime())) return null;
-  return date;
-}
-var handleStripeWebhook = async (req, res) => {
-  const sig = req.headers["stripe-signature"];
-  if (!sig) {
-    console.error("\u274C No stripe-signature header");
-    return res.status(400).send("No signature");
-  }
-  let event;
-  try {
-    event = stripe.webhooks.constructEvent(
-      req.body,
-      sig,
-      STRIPE_CONFIG.webhookSecret
-    );
-  } catch (err) {
-    console.error("\u274C Webhook signature verification failed:", err.message);
-    return res.status(400).send(`Webhook Error: ${err.message}`);
-  }
-  console.log(`\u{1F514} Webhook received: ${event.type}`);
-  try {
-    switch (event.type) {
-      // CHECKOUT COMPLETED
-      case "checkout.session.completed": {
-        const session2 = event.data.object;
-        const userId = session2.metadata?.userId;
-        if (userId && session2.subscription) {
-          const subscriptionId = typeof session2.subscription === "string" ? session2.subscription : session2.subscription.id;
-          const stripeSubscription = await stripe.subscriptions.retrieve(
-            subscriptionId
-          );
-          const subData = stripeSubscription;
-          const stripePriceId = stripeSubscription.items.data[0].price.id;
-          const billingInterval = stripePriceId === STRIPE_CONFIG.yearlyPriceId ? "yearly" : "monthly";
-          const periodStart = subData.status === "trialing" && subData.trial_start ? subData.trial_start : subData.current_period_start || subData.trial_start;
-          const periodEnd = subData.status === "trialing" && subData.trial_end ? subData.trial_end : subData.current_period_end || subData.trial_end;
-          if (!periodStart || !periodEnd) {
-            console.error("\u274C Cannot determine period dates for subscription");
-            break;
-          }
-          const periodStartDate = safeTimestampToDate(periodStart);
-          const periodEndDate = safeTimestampToDate(periodEnd);
-          if (!periodStartDate || !periodEndDate) {
-            console.error("\u274C Invalid period dates");
-            break;
-          }
-          await db.insert(subscriptions).values({
-            userId: parseInt(userId, 10),
-            stripeSubscriptionId: stripeSubscription.id,
-            stripeCustomerId: typeof stripeSubscription.customer === "string" ? stripeSubscription.customer : stripeSubscription.customer?.id || "",
-            stripePriceId: stripeSubscription.items.data[0].price.id,
-            billingInterval,
-            status: stripeSubscription.status,
-            plan: "pro",
-            currentPeriodStart: periodStartDate,
-            currentPeriodEnd: periodEndDate,
-            cancelAtPeriodEnd: subData.cancel_at_period_end || false,
-            trialStart: safeTimestampToDate(subData.trial_start),
-            trialEnd: safeTimestampToDate(subData.trial_end)
-          });
-          console.log(
-            `\u2705 ${billingInterval} subscription created for user ${userId}`
-          );
-        }
-        break;
-      }
-      // SUBSCRIPTION CREATED (handles direct API subscriptions)
-      case "customer.subscription.created": {
-        try {
-          const stripeSubscription = event.data.object;
-          const subData = stripeSubscription;
-          console.log(
-            `\u{1F4E6} Subscription created in Stripe: ${stripeSubscription.id}`
-          );
-          const userId = subData.metadata?.userId;
-          if (!userId) {
-            console.log(`\u26A0\uFE0F No userId in subscription metadata, skipping`);
-            break;
-          }
-          console.log(`   User ID: ${userId}`);
-          console.log(`   Status: ${stripeSubscription.status}`);
-          const stripePriceId = stripeSubscription.items.data[0].price.id;
-          const billingInterval = stripePriceId === STRIPE_CONFIG.yearlyPriceId ? "yearly" : "monthly";
-          console.log(`   Billing interval: ${billingInterval}`);
-          const [existing] = await db.select().from(subscriptions).where(
-            eq13(subscriptions.stripeSubscriptionId, stripeSubscription.id)
-          );
-          if (existing) {
-            console.log(
-              `\u2139\uFE0F Subscription ${stripeSubscription.id} already in database, skipping`
-            );
-            break;
-          }
-          const [existingFreeTrial] = await db.select().from(subscriptions).where(
-            and7(
-              eq13(subscriptions.userId, parseInt(userId, 10)),
-              eq13(subscriptions.status, "free_trial")
-            )
-          ).limit(1);
-          const paymentFailed = stripeSubscription.status === "incomplete";
-          const now = /* @__PURE__ */ new Date();
-          const hadActiveTrial = existingFreeTrial?.trialEnd && new Date(existingFreeTrial.trialEnd) > now;
-          if (paymentFailed && hadActiveTrial) {
-            console.log(
-              `\u26A0\uFE0F Payment failed for user ${userId} with active trial`
-            );
-            console.log(
-              `\u2705 PRESERVING free trial until ${existingFreeTrial.trialEnd}`
-            );
-            await db.update(subscriptions).set({
-              stripeSubscriptionId: stripeSubscription.id,
-              stripeCustomerId: typeof stripeSubscription.customer === "string" ? stripeSubscription.customer : stripeSubscription.customer?.id || "",
-              stripePriceId,
-              billingInterval,
-              // ✅ FIXED: Safe metadata spreading
-              metadata: {
-                ...existingFreeTrial.metadata && typeof existingFreeTrial.metadata === "object" ? existingFreeTrial.metadata : {},
-                failedPaymentAttempt: {
-                  subscriptionId: stripeSubscription.id,
-                  attemptedAt: (/* @__PURE__ */ new Date()).toISOString(),
-                  reason: "payment_failed_during_trial"
-                }
-              },
-              updatedAt: /* @__PURE__ */ new Date()
-            }).where(eq13(subscriptions.id, existingFreeTrial.id));
-            console.log(`\u2705 Trial preserved - user can still access dashboard`);
-            break;
-          }
-          const subscriptionItem = subData.items?.data?.[0];
-          let periodStartRaw = subscriptionItem?.current_period_start || subData.billing_cycle_anchor || subData.created;
-          let periodEndRaw = subscriptionItem?.current_period_end;
-          console.log(`   Period start (raw): ${periodStartRaw}`);
-          console.log(`   Period end (raw): ${periodEndRaw}`);
-          let periodStart = null;
-          let periodEnd = null;
-          try {
-            if (periodStartRaw) {
-              periodStart = new Date(Number(periodStartRaw) * 1e3);
-              console.log(
-                `   Period start (converted): ${periodStart.toISOString()}`
-              );
-            }
-            if (periodEndRaw) {
-              periodEnd = new Date(Number(periodEndRaw) * 1e3);
-              console.log(
-                `   Period end (converted): ${periodEnd.toISOString()}`
-              );
-            }
-          } catch (dateError) {
-            console.error(`\u274C Error converting dates:`, dateError.message);
-          }
-          if (!periodStart || !periodEnd || isNaN(periodStart.getTime()) || isNaN(periodEnd.getTime())) {
-            console.error(`\u274C Invalid period dates in subscription.created`);
-            console.error(
-              `   Period start: ${periodStartRaw} -> ${periodStart}`
-            );
-            console.error(`   Period end: ${periodEndRaw} -> ${periodEnd}`);
-            break;
-          }
-          if (existingFreeTrial) {
-            if (existingFreeTrial.isLifetime) {
-              console.log(
-                `\u23ED\uFE0F Ignoring subscription creation for lifetime user ${userId}`
-              );
-              break;
-            }
-            console.log(
-              `\u{1F504} Converting free trial to paid ${billingInterval} subscription (webhook)`
-            );
-            await db.update(subscriptions).set({
-              stripeSubscriptionId: stripeSubscription.id,
-              stripeCustomerId: typeof stripeSubscription.customer === "string" ? stripeSubscription.customer : stripeSubscription.customer?.id || "",
-              stripePriceId: stripeSubscription.items.data[0].price.id,
-              billingInterval,
-              status: stripeSubscription.status,
-              plan: "pro",
-              currentPeriodStart: periodStart,
-              currentPeriodEnd: periodEnd,
-              cancelAtPeriodEnd: subData.cancel_at_period_end || false,
-              trialStart: subData.trial_start ? new Date(Number(subData.trial_start) * 1e3) : null,
-              trialEnd: subData.trial_end ? new Date(Number(subData.trial_end) * 1e3) : null,
-              updatedAt: /* @__PURE__ */ new Date()
-            }).where(eq13(subscriptions.id, existingFreeTrial.id));
-            console.log(
-              `\u2705 Free trial converted to paid ${billingInterval} subscription`
-            );
-          } else {
-            console.log(
-              `\u2728 Creating new ${billingInterval} subscription record (webhook)`
-            );
-            await db.insert(subscriptions).values({
-              userId: parseInt(userId, 10),
-              stripeSubscriptionId: stripeSubscription.id,
-              stripeCustomerId: typeof stripeSubscription.customer === "string" ? stripeSubscription.customer : stripeSubscription.customer?.id || "",
-              stripePriceId: stripeSubscription.items.data[0].price.id,
-              billingInterval,
-              status: stripeSubscription.status,
-              plan: "pro",
-              currentPeriodStart: periodStart,
-              currentPeriodEnd: periodEnd,
-              cancelAtPeriodEnd: subData.cancel_at_period_end || false,
-              trialStart: subData.trial_start ? new Date(Number(subData.trial_start) * 1e3) : null,
-              trialEnd: subData.trial_end ? new Date(Number(subData.trial_end) * 1e3) : null
-            });
-            console.log(
-              `\u2705 ${billingInterval} subscription created in database`
-            );
-          }
-        } catch (createError) {
-          console.error(
-            `\u274C Error handling subscription.created:`,
-            createError.message
-          );
-          console.error(`   Stack:`, createError.stack);
-        }
-        break;
-      }
-      // SUBSCRIPTION UPDATED
-      case "customer.subscription.updated": {
-        const stripeSubscription = event.data.object;
-        const subData = stripeSubscription;
-        console.log(`\u{1F4DD} Updating subscription: ${stripeSubscription.id}`);
-        console.log(`   Status: ${stripeSubscription.status}`);
-        console.log(`   Cancel at period end: ${subData.cancel_at_period_end}`);
-        const [existingSubscription] = await db.select().from(subscriptions).where(eq13(subscriptions.stripeSubscriptionId, stripeSubscription.id));
-        if (!existingSubscription) {
-          console.log(
-            `\u26A0\uFE0F Subscription ${stripeSubscription.id} not found in database`
-          );
-          break;
-        }
-        if (existingSubscription.isLifetime) {
-          console.log(
-            `\u23ED\uFE0F Ignoring webhook for lifetime user ${existingSubscription.userId} - subscription ${stripeSubscription.id}`
-          );
-          break;
-        }
-        const updateData = {
-          status: stripeSubscription.status,
-          updatedAt: /* @__PURE__ */ new Date()
-        };
-        const subscriptionItem = subData.items?.data?.[0];
-        const periodStartRaw = subscriptionItem?.current_period_start;
-        const periodEndRaw = subscriptionItem?.current_period_end;
-        console.log(`   Period start (raw): ${periodStartRaw}`);
-        console.log(`   Period end (raw): ${periodEndRaw}`);
-        if (periodStartRaw) {
-          const periodStart = new Date(Number(periodStartRaw) * 1e3);
-          if (!isNaN(periodStart.getTime())) {
-            updateData.currentPeriodStart = periodStart;
-            console.log(
-              `   Period start (converted): ${periodStart.toISOString()}`
-            );
-          }
-        }
-        if (periodEndRaw) {
-          const periodEnd = new Date(Number(periodEndRaw) * 1e3);
-          if (!isNaN(periodEnd.getTime())) {
-            updateData.currentPeriodEnd = periodEnd;
-            console.log(
-              `   Period end (converted): ${periodEnd.toISOString()}`
-            );
-          }
-        }
-        if (subData.cancel_at_period_end !== void 0) {
-          updateData.cancelAtPeriodEnd = Boolean(subData.cancel_at_period_end);
-        }
-        const canceledAt = safeTimestampToDate(subData.canceled_at);
-        if (canceledAt) {
-          updateData.canceledAt = canceledAt;
-        } else if (subData.canceled_at === null) {
-          updateData.canceledAt = null;
-        }
-        const trialEnd = safeTimestampToDate(subData.trial_end);
-        if (trialEnd) {
-          updateData.trialEnd = trialEnd;
-        }
-        console.log(
-          `   Updating fields: ${Object.keys(updateData).join(", ")}`
-        );
-        await db.update(subscriptions).set(updateData).where(eq13(subscriptions.id, existingSubscription.id));
-        console.log(`\u2705 Subscription updated: ${stripeSubscription.id}`);
-        break;
-      }
-      // SUBSCRIPTION DELETED
-      case "customer.subscription.deleted": {
-        const stripeSubscription = event.data.object;
-        const [existingSubscription] = await db.select().from(subscriptions).where(eq13(subscriptions.stripeSubscriptionId, stripeSubscription.id));
-        if (existingSubscription) {
-          if (existingSubscription.isLifetime) {
-            console.log(
-              `\u23ED\uFE0F Ignoring deletion webhook for lifetime user ${existingSubscription.userId} - subscription ${stripeSubscription.id}`
-            );
-            break;
-          }
-          await db.update(subscriptions).set({
-            status: "canceled",
-            canceledAt: /* @__PURE__ */ new Date(),
-            updatedAt: /* @__PURE__ */ new Date()
-          }).where(eq13(subscriptions.id, existingSubscription.id));
-          console.log(`\u274C Subscription canceled: ${stripeSubscription.id}`);
-        }
-        break;
-      }
-      // PAYMENT SUCCEEDED
-      case "invoice.payment_succeeded": {
-        const invoice = event.data.object;
-        const subscriptionId = invoice.subscription;
-        if (subscriptionId && typeof subscriptionId === "string") {
-          const [existingSubscription] = await db.select().from(subscriptions).where(eq13(subscriptions.stripeSubscriptionId, subscriptionId));
-          if (existingSubscription) {
-            if (existingSubscription.isLifetime) {
-              console.log(
-                `\u23ED\uFE0F Ignoring payment webhook for lifetime user ${existingSubscription.userId}`
-              );
-              break;
-            }
-            if (existingSubscription.status === "past_due") {
-              await db.update(subscriptions).set({
-                status: "active",
-                updatedAt: /* @__PURE__ */ new Date()
-              }).where(eq13(subscriptions.id, existingSubscription.id));
-              console.log(`\u2705 Payment succeeded: ${subscriptionId}`);
-            }
-          }
-        }
-        break;
-      }
-      // PAYMENT FAILED
-      case "invoice.payment_failed": {
-        const invoice = event.data.object;
-        const subscriptionId = invoice.subscription;
-        if (subscriptionId && typeof subscriptionId === "string") {
-          const [existingSubscription] = await db.select().from(subscriptions).where(eq13(subscriptions.stripeSubscriptionId, subscriptionId));
-          if (existingSubscription) {
-            if (existingSubscription.isLifetime) {
-              console.log(
-                `\u23ED\uFE0F Ignoring payment failure webhook for lifetime user ${existingSubscription.userId}`
-              );
-              break;
-            }
-            await db.update(subscriptions).set({
-              status: "past_due",
-              updatedAt: /* @__PURE__ */ new Date()
-            }).where(eq13(subscriptions.id, existingSubscription.id));
-            console.log(`\u26A0\uFE0F Payment failed: ${subscriptionId}`);
-          }
-        }
-        break;
-      }
-      default:
-        console.log(`\u2139\uFE0F Unhandled event: ${event.type}`);
-    }
-    res.json({ received: true });
-  } catch (error) {
-    console.error("\u274C Webhook handler error:", error.message);
-    console.error("   Event type:", event?.type);
-    console.error("   Stack:", error.stack);
-    res.status(500).json({ error: error.message });
-  }
-};
-
 // routes/subscription.ts
 var router30 = express9.Router();
-router30.post("/webhook", express9.raw({ type: "application/json" }), handleStripeWebhook);
 router30.post("/create-setup-intent", requireAuth, createSetupIntent);
 router30.post("/confirm", requireAuth, confirmSubscription);
 router30.post("/create-checkout", requireAuth, createCheckoutSession);
@@ -7803,15 +7945,272 @@ router31.post("/upload-thumbnail", upload6.single("thumbnail"), async (req, res)
 });
 var screenshotSaver_default = router31;
 
+// controllers/subscription/webhookController.ts
+import { eq as eq14 } from "drizzle-orm";
+function safeTimestampToDate(timestamp2) {
+  if (!timestamp2) return null;
+  const ts = Number(timestamp2);
+  if (isNaN(ts) || ts <= 0) return null;
+  const date = new Date(ts * 1e3);
+  if (isNaN(date.getTime())) return null;
+  return date;
+}
+var handleStripeWebhook = async (req, res) => {
+  const sig = req.headers["stripe-signature"];
+  if (!sig) {
+    console.error("\u274C No stripe-signature header");
+    return res.status(400).send("No signature");
+  }
+  console.log("\u{1F50D} Webhook request details:");
+  console.log("   - Body type:", typeof req.body);
+  console.log("   - Body is Buffer:", Buffer.isBuffer(req.body));
+  console.log("   - Signature present:", !!sig);
+  console.log("\n\u{1F41B} ============ WEBHOOK DEBUG ============");
+  console.log("Request URL:", req.url);
+  console.log("Request path:", req.path);
+  console.log("Body type:", typeof req.body);
+  console.log("Body is Buffer:", Buffer.isBuffer(req.body));
+  console.log("Body is Object:", typeof req.body === "object" && !Buffer.isBuffer(req.body));
+  console.log("Body length:", req.body?.length);
+  console.log("Headers:", {
+    "content-type": req.headers["content-type"],
+    "stripe-signature": req.headers["stripe-signature"]?.substring(0, 20) + "..."
+  });
+  console.log("Webhook secret:", STRIPE_CONFIG.webhookSecret.substring(0, 20) + "...");
+  console.log("============ END DEBUG ============\n");
+  let event;
+  try {
+    event = stripe.webhooks.constructEvent(
+      req.body,
+      // This should be a Buffer
+      sig,
+      STRIPE_CONFIG.webhookSecret
+    );
+    console.log(`\u2705 Webhook verified: ${event.type}`);
+  } catch (err) {
+    console.error("\u274C Webhook signature verification failed:", err.message);
+    console.error("   - Webhook secret used:", STRIPE_CONFIG.webhookSecret.substring(0, 15) + "...");
+    return res.status(400).send(`Webhook Error: ${err.message}`);
+  }
+  console.log(`\u{1F514} Processing webhook: ${event.type}`);
+  try {
+    switch (event.type) {
+      // ... rest of your existing switch cases stay the same ...
+      case "checkout.session.completed": {
+        const session2 = event.data.object;
+        const userId = session2.metadata?.userId;
+        if (userId && session2.subscription) {
+          const subscriptionId = typeof session2.subscription === "string" ? session2.subscription : session2.subscription.id;
+          const stripeSubscription = await stripe.subscriptions.retrieve(
+            subscriptionId
+          );
+          const subData = stripeSubscription;
+          const stripePriceId = stripeSubscription.items.data[0].price.id;
+          const plan = getPlanFromPriceId(stripePriceId) || "pro";
+          const periodStart = subData.current_period_start || subData.created;
+          const periodEnd = subData.current_period_end;
+          if (!periodStart || !periodEnd) {
+            console.error("\u274C Cannot determine period dates for subscription");
+            break;
+          }
+          const periodStartDate = safeTimestampToDate(periodStart);
+          const periodEndDate = safeTimestampToDate(periodEnd);
+          if (!periodStartDate || !periodEndDate) {
+            console.error("\u274C Invalid period dates");
+            break;
+          }
+          await db.insert(subscriptions).values({
+            userId: parseInt(userId, 10),
+            stripeSubscriptionId: stripeSubscription.id,
+            stripeCustomerId: typeof stripeSubscription.customer === "string" ? stripeSubscription.customer : stripeSubscription.customer?.id || "",
+            stripePriceId: stripeSubscription.items.data[0].price.id,
+            status: stripeSubscription.status,
+            plan,
+            currentPeriodStart: periodStartDate,
+            currentPeriodEnd: periodEndDate,
+            cancelAtPeriodEnd: subData.cancel_at_period_end || false,
+            trialStart: null,
+            trialEnd: null
+          });
+          console.log(`\u2705 ${plan} subscription created for user ${userId}`);
+        }
+        break;
+      }
+      case "customer.subscription.created": {
+        const stripeSubscription = event.data.object;
+        const subData = stripeSubscription;
+        console.log(`\u{1F4E6} Subscription created: ${stripeSubscription.id}`);
+        const userId = subData.metadata?.userId;
+        if (!userId) {
+          console.log(`\u26A0\uFE0F No userId in metadata, skipping`);
+          break;
+        }
+        const stripePriceId = stripeSubscription.items.data[0].price.id;
+        const plan = getPlanFromPriceId(stripePriceId) || "pro";
+        console.log(`   User: ${userId}, Plan: ${plan}, Status: ${stripeSubscription.status}`);
+        const [existing] = await db.select().from(subscriptions).where(eq14(subscriptions.stripeSubscriptionId, stripeSubscription.id));
+        if (existing) {
+          console.log(`\u2139\uFE0F Subscription already exists, skipping`);
+          break;
+        }
+        const subscriptionItem = subData.items?.data?.[0];
+        const periodStartRaw = subscriptionItem?.current_period_start || subData.billing_cycle_anchor || subData.created;
+        const periodEndRaw = subscriptionItem?.current_period_end;
+        let periodStart = null;
+        let periodEnd = null;
+        try {
+          if (periodStartRaw) {
+            periodStart = new Date(Number(periodStartRaw) * 1e3);
+          }
+          if (periodEndRaw) {
+            periodEnd = new Date(Number(periodEndRaw) * 1e3);
+          }
+        } catch (dateError) {
+          console.error(`\u274C Error converting dates:`, dateError.message);
+        }
+        if (!periodStart || !periodEnd || isNaN(periodStart.getTime()) || isNaN(periodEnd.getTime())) {
+          console.error(`\u274C Invalid period dates`);
+          break;
+        }
+        await db.insert(subscriptions).values({
+          userId: parseInt(userId, 10),
+          stripeSubscriptionId: stripeSubscription.id,
+          stripeCustomerId: typeof stripeSubscription.customer === "string" ? stripeSubscription.customer : stripeSubscription.customer?.id || "",
+          stripePriceId: stripeSubscription.items.data[0].price.id,
+          status: stripeSubscription.status,
+          plan,
+          currentPeriodStart: periodStart,
+          currentPeriodEnd: periodEnd,
+          cancelAtPeriodEnd: subData.cancel_at_period_end || false,
+          trialStart: null,
+          trialEnd: null
+        });
+        console.log(`\u2705 ${plan} subscription created in database`);
+        break;
+      }
+      case "customer.subscription.updated": {
+        const stripeSubscription = event.data.object;
+        const subData = stripeSubscription;
+        console.log(`\u{1F4DD} Updating subscription: ${stripeSubscription.id}`);
+        const [existingSubscription] = await db.select().from(subscriptions).where(eq14(subscriptions.stripeSubscriptionId, stripeSubscription.id));
+        if (!existingSubscription) {
+          console.log(`\u26A0\uFE0F Subscription not found in database`);
+          break;
+        }
+        if (existingSubscription.isLifetime) {
+          console.log(`\u23ED\uFE0F Ignoring webhook for lifetime user`);
+          break;
+        }
+        const updateData = {
+          status: stripeSubscription.status,
+          updatedAt: /* @__PURE__ */ new Date()
+        };
+        const subscriptionItem = subData.items?.data?.[0];
+        const periodStartRaw = subscriptionItem?.current_period_start;
+        const periodEndRaw = subscriptionItem?.current_period_end;
+        if (periodStartRaw) {
+          const periodStart = new Date(Number(periodStartRaw) * 1e3);
+          if (!isNaN(periodStart.getTime())) {
+            updateData.currentPeriodStart = periodStart;
+          }
+        }
+        if (periodEndRaw) {
+          const periodEnd = new Date(Number(periodEndRaw) * 1e3);
+          if (!isNaN(periodEnd.getTime())) {
+            updateData.currentPeriodEnd = periodEnd;
+          }
+        }
+        if (subData.cancel_at_period_end !== void 0) {
+          updateData.cancelAtPeriodEnd = Boolean(subData.cancel_at_period_end);
+        }
+        const canceledAt = safeTimestampToDate(subData.canceled_at);
+        if (canceledAt) {
+          updateData.canceledAt = canceledAt;
+        } else if (subData.canceled_at === null) {
+          updateData.canceledAt = null;
+        }
+        await db.update(subscriptions).set(updateData).where(eq14(subscriptions.id, existingSubscription.id));
+        console.log(`\u2705 Subscription updated`);
+        break;
+      }
+      case "customer.subscription.deleted": {
+        const stripeSubscription = event.data.object;
+        const [existingSubscription] = await db.select().from(subscriptions).where(eq14(subscriptions.stripeSubscriptionId, stripeSubscription.id));
+        if (existingSubscription) {
+          if (existingSubscription.isLifetime) {
+            console.log(`\u23ED\uFE0F Ignoring deletion webhook for lifetime user`);
+            break;
+          }
+          await db.update(subscriptions).set({
+            status: "canceled",
+            canceledAt: /* @__PURE__ */ new Date(),
+            updatedAt: /* @__PURE__ */ new Date()
+          }).where(eq14(subscriptions.id, existingSubscription.id));
+          console.log(`\u274C Subscription canceled`);
+        }
+        break;
+      }
+      case "invoice.payment_succeeded": {
+        const invoice = event.data.object;
+        const subscriptionId = invoice.subscription;
+        if (subscriptionId && typeof subscriptionId === "string") {
+          const [existingSubscription] = await db.select().from(subscriptions).where(eq14(subscriptions.stripeSubscriptionId, subscriptionId));
+          if (existingSubscription) {
+            if (existingSubscription.isLifetime) {
+              console.log(`\u23ED\uFE0F Ignoring payment webhook for lifetime user`);
+              break;
+            }
+            if (existingSubscription.status === "past_due") {
+              await db.update(subscriptions).set({
+                status: "active",
+                updatedAt: /* @__PURE__ */ new Date()
+              }).where(eq14(subscriptions.id, existingSubscription.id));
+              console.log(`\u2705 Payment succeeded`);
+            }
+          }
+        }
+        break;
+      }
+      case "invoice.payment_failed": {
+        const invoice = event.data.object;
+        const subscriptionId = invoice.subscription;
+        if (subscriptionId && typeof subscriptionId === "string") {
+          const [existingSubscription] = await db.select().from(subscriptions).where(eq14(subscriptions.stripeSubscriptionId, subscriptionId));
+          if (existingSubscription) {
+            if (existingSubscription.isLifetime) {
+              console.log(`\u23ED\uFE0F Ignoring payment failure for lifetime user`);
+              break;
+            }
+            await db.update(subscriptions).set({
+              status: "past_due",
+              updatedAt: /* @__PURE__ */ new Date()
+            }).where(eq14(subscriptions.id, existingSubscription.id));
+            console.log(`\u26A0\uFE0F Payment failed`);
+          }
+        }
+        break;
+      }
+      default:
+        console.log(`\u2139\uFE0F Unhandled event: ${event.type}`);
+    }
+    res.json({ received: true });
+  } catch (error) {
+    console.error("\u274C Webhook handler error:", error.message);
+    console.error("   Event type:", event?.type);
+    console.error("   Stack:", error.stack);
+    res.status(500).json({ error: error.message });
+  }
+};
+
 // routes/admin.ts
 import { Router as Router23 } from "express";
 
 // middleware/adminAuth.ts
 import jwt5 from "jsonwebtoken";
-import { eq as eq15, gte as gte3 } from "drizzle-orm";
+import { eq as eq16, gte as gte3 } from "drizzle-orm";
 
 // utils/auditLogger.ts
-import { and as and8, desc as desc6, eq as eq14, gte as gte2 } from "drizzle-orm";
+import { and as and7, desc as desc7, eq as eq15, gte as gte2 } from "drizzle-orm";
 var logAdminAction = async (req, data) => {
   try {
     const ipAddress = req.ip || req.socket.remoteAddress || "unknown";
@@ -7931,7 +8330,7 @@ var verifyAdminToken = async (req, res, next) => {
       });
     }
     const token = authHeader.substring(7);
-    const [blacklisted] = await db.select().from(blacklistedTokens).where(eq15(blacklistedTokens.token, token)).limit(1);
+    const [blacklisted] = await db.select().from(blacklistedTokens).where(eq16(blacklistedTokens.token, token)).limit(1);
     if (blacklisted) {
       return res.status(401).json({
         success: false,
@@ -7953,7 +8352,7 @@ var verifyAdminToken = async (req, res, next) => {
         error: "Invalid admin token"
       });
     }
-    const [admin] = await db.select().from(adminUsers).where(eq15(adminUsers.id, decoded.adminId));
+    const [admin] = await db.select().from(adminUsers).where(eq16(adminUsers.id, decoded.adminId));
     if (!admin) {
       return res.status(401).json({
         success: false,
@@ -8046,7 +8445,7 @@ var blacklistToken2 = async (token, expiresAt) => {
 // controllers/admin/authController.ts
 import bcrypt2 from "bcryptjs";
 import jwt6 from "jsonwebtoken";
-import { eq as eq16 } from "drizzle-orm";
+import { eq as eq17 } from "drizzle-orm";
 var JWT_SECRET3 = process.env.JWT_SECRET;
 if (!JWT_SECRET3) {
   throw new Error("CRITICAL: JWT_SECRET environment variable is not set!");
@@ -8089,7 +8488,7 @@ var adminLogin = async (req, res) => {
         error: "Email and password required"
       });
     }
-    const [admin] = await db.select().from(adminUsers).where(eq16(adminUsers.email, email.toLowerCase()));
+    const [admin] = await db.select().from(adminUsers).where(eq17(adminUsers.email, email.toLowerCase()));
     if (!admin || !admin.active) {
       if (admin) {
         await logAdminAction(req, {
@@ -8119,7 +8518,7 @@ var adminLogin = async (req, res) => {
         error: "Invalid credentials"
       });
     }
-    await db.update(adminUsers).set({ lastLogin: /* @__PURE__ */ new Date() }).where(eq16(adminUsers.id, admin.id));
+    await db.update(adminUsers).set({ lastLogin: /* @__PURE__ */ new Date() }).where(eq17(adminUsers.id, admin.id));
     const token = jwt6.sign(
       {
         adminId: admin.id,
@@ -8247,7 +8646,7 @@ var generateReAuthToken = async (req, res) => {
         error: "Password required for confirmation"
       });
     }
-    const [adminUser] = await db.select().from(adminUsers).where(eq16(adminUsers.id, admin.adminId));
+    const [adminUser] = await db.select().from(adminUsers).where(eq17(adminUsers.id, admin.adminId));
     if (!adminUser) {
       return res.status(401).json({
         success: false,
@@ -8311,7 +8710,7 @@ var createAdminUser = async (req, res) => {
         error: passwordCheck.errors.join(". ")
       });
     }
-    const [existingAdmin] = await db.select().from(adminUsers).where(eq16(adminUsers.email, email.toLowerCase()));
+    const [existingAdmin] = await db.select().from(adminUsers).where(eq17(adminUsers.email, email.toLowerCase()));
     if (existingAdmin) {
       await logAdminAction(req, {
         adminId: creatorAdminId,
@@ -8442,7 +8841,7 @@ var changeAdminPassword = async (req, res) => {
         error: "Password must contain uppercase, lowercase, number, and special character"
       });
     }
-    const adminUsers_result = await db.select().from(adminUsers).where(eq16(adminUsers.id, admin.adminId)).limit(1);
+    const adminUsers_result = await db.select().from(adminUsers).where(eq17(adminUsers.id, admin.adminId)).limit(1);
     console.log("\u{1F4CA} Query result:", {
       found: adminUsers_result.length > 0,
       fields: adminUsers_result[0] ? Object.keys(adminUsers_result[0]) : []
@@ -8493,7 +8892,7 @@ var changeAdminPassword = async (req, res) => {
       console.log("\u{1F504} Will log out all devices");
     }
     console.log("\u{1F4BE} Updating password in database...");
-    await db.update(adminUsers).set(updateData).where(eq16(adminUsers.id, admin.adminId));
+    await db.update(adminUsers).set(updateData).where(eq17(adminUsers.id, admin.adminId));
     console.log("\u2705 Password updated successfully");
     await logAdminAction(req, {
       adminId: admin.adminId,
@@ -8540,14 +8939,14 @@ var updateAdminProfile = async (req, res) => {
     }
     await db.update(adminUsers).set({
       name: name.trim()
-    }).where(eq16(adminUsers.id, admin.adminId));
+    }).where(eq17(adminUsers.id, admin.adminId));
     const [updatedAdmin] = await db.select({
       id: adminUsers.id,
       email: adminUsers.email,
       name: adminUsers.name,
       role: adminUsers.role,
       lastLogin: adminUsers.lastLogin
-    }).from(adminUsers).where(eq16(adminUsers.id, admin.adminId)).limit(1);
+    }).from(adminUsers).where(eq17(adminUsers.id, admin.adminId)).limit(1);
     await logAdminAction(req, {
       adminId: admin.adminId,
       action: "UPDATE_PROFILE",
@@ -8573,7 +8972,7 @@ var updateAdminProfile = async (req, res) => {
 };
 
 // controllers/admin/analyticsController.ts
-import { sql as sql2, count, eq as eq17, and as and9, gte as gte4, desc as desc7 } from "drizzle-orm";
+import { sql as sql2, count, eq as eq18, and as and8, gte as gte4, desc as desc8 } from "drizzle-orm";
 import jwt7 from "jsonwebtoken";
 var getDashboardStats = async (req, res) => {
   try {
@@ -8586,7 +8985,7 @@ var getDashboardStats = async (req, res) => {
     const activeSubscriptions = activeSubsResult.count;
     const [paidSubsResult] = await db.select({ count: count() }).from(subscriptions).where(sql2`status IN ('active', 'trialing')`);
     const paidSubscriptions = paidSubsResult.count;
-    const [freeTrialResult] = await db.select({ count: count() }).from(subscriptions).where(eq17(subscriptions.status, "free_trial"));
+    const [freeTrialResult] = await db.select({ count: count() }).from(subscriptions).where(eq18(subscriptions.status, "free_trial"));
     const freeTrialUsers = freeTrialResult.count;
     const [newUsers7d] = await db.select({ count: count() }).from(users).where(gte4(users.createdAt, last7Days));
     const [newUsers30d] = await db.select({ count: count() }).from(users).where(gte4(users.createdAt, last30Days));
@@ -8645,16 +9044,16 @@ var getVisitAnalytics = async (req, res) => {
     const visitsByPage = await db.select({
       page: pageVisits.page,
       visits: count()
-    }).from(pageVisits).where(gte4(pageVisits.visitedAt, startDate)).groupBy(pageVisits.page).orderBy(desc7(count())).limit(20);
+    }).from(pageVisits).where(gte4(pageVisits.visitedAt, startDate)).groupBy(pageVisits.page).orderBy(desc8(count())).limit(20);
     const topReferrers = await db.select({
       referrer: pageVisits.referrer,
       visits: count()
     }).from(pageVisits).where(
-      and9(
+      and8(
         gte4(pageVisits.visitedAt, startDate),
         sql2`${pageVisits.referrer} IS NOT NULL AND ${pageVisits.referrer} != ''`
       )
-    ).groupBy(pageVisits.referrer).orderBy(desc7(count())).limit(10);
+    ).groupBy(pageVisits.referrer).orderBy(desc8(count())).limit(10);
     const visitsByDate = await db.select({
       date: sql2`DATE(${pageVisits.visitedAt})`,
       visits: count(),
@@ -8755,11 +9154,11 @@ var getEngagementMetrics = async (req, res) => {
       avgScrollDepth: sql2`AVG((event_data->>'maxScrollDepth')::int)`,
       totalSessions: count()
     }).from(analyticsEvents).where(
-      and9(
-        eq17(analyticsEvents.eventType, "engagement"),
+      and8(
+        eq18(analyticsEvents.eventType, "engagement"),
         gte4(analyticsEvents.createdAt, startDate)
       )
-    ).groupBy(sql2`event_data->>'page'`).orderBy(desc7(count())).limit(20);
+    ).groupBy(sql2`event_data->>'page'`).orderBy(desc8(count())).limit(20);
     res.json({
       success: true,
       engagement: engagementData.map((row) => ({
@@ -8777,13 +9176,13 @@ var getEngagementMetrics = async (req, res) => {
 
 // controllers/admin/userManagementController.ts
 import {
-  eq as eq18,
+  eq as eq19,
   sql as sql3,
-  desc as desc8,
+  desc as desc9,
   asc,
   ilike,
   or,
-  and as and10,
+  and as and9,
   gte as gte5,
   lte as lte2,
   count as count2
@@ -8828,25 +9227,25 @@ var getUsers = async (req, res) => {
       } else if (subscriptionFilter === "paid") {
         conditions.push(sql3`${subscriptions.status} IN ('active', 'trialing')`);
       } else if (subscriptionFilter === "free_trial") {
-        conditions.push(eq18(subscriptions.status, "free_trial"));
+        conditions.push(eq19(subscriptions.status, "free_trial"));
       } else if (subscriptionFilter === "lifetime") {
-        conditions.push(eq18(subscriptions.status, "lifetime"));
+        conditions.push(eq19(subscriptions.status, "lifetime"));
       } else if (subscriptionFilter === "company") {
-        conditions.push(eq18(subscriptions.status, "company"));
+        conditions.push(eq19(subscriptions.status, "company"));
       } else {
-        conditions.push(eq18(subscriptions.status, subscriptionFilter));
+        conditions.push(eq19(subscriptions.status, subscriptionFilter));
       }
     }
     if (verifiedFilter) {
-      conditions.push(eq18(users.verified, verifiedFilter === "true"));
+      conditions.push(eq19(users.verified, verifiedFilter === "true"));
     }
     if (providerFilter) {
       if (providerFilter === "local") {
         conditions.push(
-          or(eq18(users.provider, "local"), sql3`${users.provider} IS NULL`)
+          or(eq19(users.provider, "local"), sql3`${users.provider} IS NULL`)
         );
       } else {
-        conditions.push(eq18(users.provider, providerFilter));
+        conditions.push(eq19(users.provider, providerFilter));
       }
     }
     if (dateFrom) {
@@ -8858,9 +9257,9 @@ var getUsers = async (req, res) => {
       conditions.push(lte2(users.createdAt, endDate));
     }
     if (conditions.length > 0) {
-      query = query.where(and10(...conditions));
+      query = query.where(and9(...conditions));
     }
-    const orderFunction = sortOrder === "asc" ? asc : desc8;
+    const orderFunction = sortOrder === "asc" ? asc : desc9;
     if (sortBy === "name") {
       query = query.orderBy(orderFunction(users.name));
     } else if (sortBy === "email") {
@@ -8874,7 +9273,7 @@ var getUsers = async (req, res) => {
       sql3`${users.id} = ${subscriptions.userId} AND ${subscriptions.status} IN ('active', 'trialing', 'free_trial', 'lifetime', 'company')`
     );
     if (conditions.length > 0) {
-      countQuery = countQuery.where(and10(...conditions));
+      countQuery = countQuery.where(and9(...conditions));
     }
     const [totalResult] = await countQuery;
     res.json({
@@ -8896,32 +9295,32 @@ var getUserDetails = async (req, res) => {
   const adminId = req.admin?.adminId;
   try {
     const userId = parseInt(req.params.userId);
-    const [user] = await db.select().from(users).where(eq18(users.id, userId));
+    const [user] = await db.select().from(users).where(eq19(users.id, userId));
     if (!user) {
       return res.status(404).json({
         success: false,
         error: "User not found"
       });
     }
-    const userSubscriptions = await db.select().from(subscriptions).where(eq18(subscriptions.userId, userId)).orderBy(desc8(subscriptions.createdAt));
-    const [projectsCount] = await db.select({ count: count2() }).from(projects).where(eq18(projects.userId, userId));
-    const [rendersCount] = await db.select({ count: count2() }).from(renders).where(eq18(renders.userId, userId));
-    const recentProjects = await db.select().from(projects).where(eq18(projects.userId, userId)).orderBy(desc8(projects.createdAt)).limit(5);
-    const recentRenders = await db.select().from(renders).where(eq18(renders.userId, userId)).orderBy(desc8(renders.renderedAt)).limit(5);
+    const userSubscriptions = await db.select().from(subscriptions).where(eq19(subscriptions.userId, userId)).orderBy(desc9(subscriptions.createdAt));
+    const [projectsCount] = await db.select({ count: count2() }).from(projects).where(eq19(projects.userId, userId));
+    const [rendersCount] = await db.select({ count: count2() }).from(renders).where(eq19(renders.userId, userId));
+    const recentProjects = await db.select().from(projects).where(eq19(projects.userId, userId)).orderBy(desc9(projects.createdAt)).limit(5);
+    const recentRenders = await db.select().from(renders).where(eq19(renders.userId, userId)).orderBy(desc9(renders.renderedAt)).limit(5);
     const thirtyDaysAgo = /* @__PURE__ */ new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
     const [visitsCount] = await db.select({ count: count2() }).from(pageVisits).where(
-      and10(
-        eq18(pageVisits.userId, userId),
+      and9(
+        eq19(pageVisits.userId, userId),
         gte5(pageVisits.visitedAt, thirtyDaysAgo)
       )
     );
-    const [veoCount] = await db.select({ count: count2() }).from(veo3Generations).where(eq18(veo3Generations.userId, userId));
-    const [imageGenCount] = await db.select({ count: count2() }).from(imageGenerations).where(eq18(imageGenerations.userId, userId));
+    const [veoCount] = await db.select({ count: count2() }).from(veo3Generations).where(eq19(veo3Generations.userId, userId));
+    const [imageGenCount] = await db.select({ count: count2() }).from(imageGenerations).where(eq19(imageGenerations.userId, userId));
     const recentVisits = await db.select({
       page: pageVisits.page,
       visitedAt: pageVisits.visitedAt
-    }).from(pageVisits).where(eq18(pageVisits.userId, userId)).orderBy(desc8(pageVisits.visitedAt)).limit(10);
+    }).from(pageVisits).where(eq19(pageVisits.userId, userId)).orderBy(desc9(pageVisits.visitedAt)).limit(10);
     await logAdminAction(req, {
       adminId,
       action: ADMIN_ACTIONS.VIEW_USER_DETAILS,
@@ -8962,7 +9361,7 @@ var createLifetimeAccount = async (req, res) => {
         error: "Email is required"
       });
     }
-    const [existing] = await db.select().from(users).where(eq18(users.email, email.toLowerCase().trim())).limit(1);
+    const [existing] = await db.select().from(users).where(eq19(users.email, email.toLowerCase().trim())).limit(1);
     if (existing) {
       await logAdminAction(req, {
         adminId,
@@ -9055,7 +9454,7 @@ var deleteUser = async (req, res) => {
     }
     const userIdNum = parseInt(userId, 10);
     console.log(`\u{1F5D1}\uFE0F Admin ${adminId} is deleting user ${userIdNum}`);
-    const [user] = await db.select().from(users).where(eq18(users.id, userIdNum));
+    const [user] = await db.select().from(users).where(eq19(users.id, userIdNum));
     if (!user) {
       await logAdminAction(req, {
         adminId,
@@ -9070,9 +9469,9 @@ var deleteUser = async (req, res) => {
         error: "User not found"
       });
     }
-    const [projectsCount] = await db.select({ count: count2() }).from(projects).where(eq18(projects.userId, userIdNum));
-    const [rendersCount] = await db.select({ count: count2() }).from(renders).where(eq18(renders.userId, userIdNum));
-    const [subscription] = await db.select().from(subscriptions).where(eq18(subscriptions.userId, userIdNum)).limit(1);
+    const [projectsCount] = await db.select({ count: count2() }).from(projects).where(eq19(projects.userId, userIdNum));
+    const [rendersCount] = await db.select({ count: count2() }).from(renders).where(eq19(renders.userId, userIdNum));
+    const [subscription] = await db.select().from(subscriptions).where(eq19(subscriptions.userId, userIdNum)).limit(1);
     if (subscription?.stripeSubscriptionId) {
       try {
         await stripe.subscriptions.cancel(subscription.stripeSubscriptionId);
@@ -9081,16 +9480,16 @@ var deleteUser = async (req, res) => {
         console.error("\u26A0\uFE0F Failed to cancel Stripe subscription:", stripeError);
       }
     }
-    await db.delete(projects).where(eq18(projects.userId, userIdNum));
-    await db.delete(renders).where(eq18(renders.userId, userIdNum));
-    await db.delete(uploads).where(eq18(uploads.userId, userIdNum));
-    await db.delete(datasets).where(eq18(datasets.userId, userIdNum));
-    await db.delete(veo3Generations).where(eq18(veo3Generations.userId, userIdNum));
-    await db.delete(imageGenerations).where(eq18(imageGenerations.userId, userIdNum));
-    await db.delete(youtubeDownloads).where(eq18(youtubeDownloads.userId, userIdNum));
-    await db.delete(loginAttempts).where(eq18(loginAttempts.email, user.email));
-    await db.delete(pageVisits).where(eq18(pageVisits.userId, userIdNum));
-    await db.delete(users).where(eq18(users.id, userIdNum));
+    await db.delete(projects).where(eq19(projects.userId, userIdNum));
+    await db.delete(renders).where(eq19(renders.userId, userIdNum));
+    await db.delete(uploads).where(eq19(uploads.userId, userIdNum));
+    await db.delete(datasets).where(eq19(datasets.userId, userIdNum));
+    await db.delete(veo3Generations).where(eq19(veo3Generations.userId, userIdNum));
+    await db.delete(imageGenerations).where(eq19(imageGenerations.userId, userIdNum));
+    await db.delete(youtubeDownloads).where(eq19(youtubeDownloads.userId, userIdNum));
+    await db.delete(loginAttempts).where(eq19(loginAttempts.email, user.email));
+    await db.delete(pageVisits).where(eq19(pageVisits.userId, userIdNum));
+    await db.delete(users).where(eq19(users.id, userIdNum));
     await logAdminAction(req, {
       adminId,
       action: ADMIN_ACTIONS.DELETE_USER,
@@ -9127,7 +9526,7 @@ var deleteUser = async (req, res) => {
 };
 
 // controllers/admin/subscriptionManagement.ts
-import { eq as eq19, and as and11 } from "drizzle-orm";
+import { eq as eq20, and as and10 } from "drizzle-orm";
 var grantLifetimeAccess = async (req, res) => {
   const adminId = req.admin?.id;
   try {
@@ -9139,7 +9538,7 @@ var grantLifetimeAccess = async (req, res) => {
       });
     }
     console.log(`\u{1F31F} Admin ${adminId} granting lifetime access to user ${userId}`);
-    const [user] = await db.select().from(users).where(eq19(users.id, parseInt(userId, 10))).limit(1);
+    const [user] = await db.select().from(users).where(eq20(users.id, parseInt(userId, 10))).limit(1);
     if (!user) {
       await logAdminAction(req, {
         adminId,
@@ -9154,7 +9553,7 @@ var grantLifetimeAccess = async (req, res) => {
         error: "User not found"
       });
     }
-    const [existingSub] = await db.select().from(subscriptions).where(eq19(subscriptions.userId, userId)).limit(1);
+    const [existingSub] = await db.select().from(subscriptions).where(eq20(subscriptions.userId, userId)).limit(1);
     if (existingSub && existingSub.stripeSubscriptionId) {
       console.log(`\u{1F6AB} Canceling Stripe subscription: ${existingSub.stripeSubscriptionId}`);
       try {
@@ -9189,7 +9588,7 @@ var grantLifetimeAccess = async (req, res) => {
       updatedAt: /* @__PURE__ */ new Date()
     };
     if (existingSub) {
-      await db.update(subscriptions).set(lifetimeData).where(eq19(subscriptions.id, existingSub.id));
+      await db.update(subscriptions).set(lifetimeData).where(eq20(subscriptions.id, existingSub.id));
     } else {
       await db.insert(subscriptions).values({
         ...lifetimeData,
@@ -9240,11 +9639,11 @@ var revokeLifetimeAccess = async (req, res) => {
       });
     }
     console.log(`\u{1F6AB} Admin ${adminId} revoking lifetime access from user ${userId}`);
-    const [user] = await db.select().from(users).where(eq19(users.id, parseInt(userId, 10))).limit(1);
+    const [user] = await db.select().from(users).where(eq20(users.id, parseInt(userId, 10))).limit(1);
     const [lifetimeSub] = await db.select().from(subscriptions).where(
-      and11(
-        eq19(subscriptions.userId, parseInt(userId, 10)),
-        eq19(subscriptions.isLifetime, true)
+      and10(
+        eq20(subscriptions.userId, parseInt(userId, 10)),
+        eq20(subscriptions.isLifetime, true)
       )
     ).limit(1);
     if (!lifetimeSub) {
@@ -9268,7 +9667,7 @@ var revokeLifetimeAccess = async (req, res) => {
       isCompanyAccount: false,
       canceledAt: /* @__PURE__ */ new Date(),
       updatedAt: /* @__PURE__ */ new Date()
-    }).where(eq19(subscriptions.id, lifetimeSub.id));
+    }).where(eq20(subscriptions.id, lifetimeSub.id));
     await logAdminAction(req, {
       adminId,
       action: ADMIN_ACTIONS.REVOKE_LIFETIME,
@@ -9301,7 +9700,7 @@ var revokeLifetimeAccess = async (req, res) => {
 };
 var getLifetimeAccounts = async (req, res) => {
   try {
-    const lifetimeAccounts = await db.select().from(subscriptions).where(eq19(subscriptions.isLifetime, true));
+    const lifetimeAccounts = await db.select().from(subscriptions).where(eq20(subscriptions.isLifetime, true));
     res.json({
       success: true,
       accounts: lifetimeAccounts,
@@ -9314,7 +9713,7 @@ var getLifetimeAccounts = async (req, res) => {
 };
 
 // controllers/admin/auditController.ts
-import { eq as eq20, desc as desc9, and as and12, gte as gte6, sql as sql4 } from "drizzle-orm";
+import { eq as eq21, desc as desc10, and as and11, gte as gte6, sql as sql4 } from "drizzle-orm";
 var getAuditLogs = async (req, res) => {
   try {
     const {
@@ -9327,16 +9726,16 @@ var getAuditLogs = async (req, res) => {
     } = req.query;
     const conditions = [];
     if (adminId) {
-      conditions.push(eq20(adminAuditLogs.adminId, parseInt(adminId)));
+      conditions.push(eq21(adminAuditLogs.adminId, parseInt(adminId)));
     }
     if (action) {
-      conditions.push(eq20(adminAuditLogs.action, action));
+      conditions.push(eq21(adminAuditLogs.action, action));
     }
     if (targetType) {
-      conditions.push(eq20(adminAuditLogs.targetType, targetType));
+      conditions.push(eq21(adminAuditLogs.targetType, targetType));
     }
     if (status) {
-      conditions.push(eq20(adminAuditLogs.status, status));
+      conditions.push(eq21(adminAuditLogs.status, status));
     }
     const since = /* @__PURE__ */ new Date();
     since.setDate(since.getDate() - parseInt(days));
@@ -9349,7 +9748,7 @@ var getAuditLogs = async (req, res) => {
         email: adminUsers.email,
         role: adminUsers.role
       }
-    }).from(adminAuditLogs).leftJoin(adminUsers, eq20(adminAuditLogs.adminId, adminUsers.id)).where(conditions.length > 0 ? and12(...conditions) : void 0).orderBy(desc9(adminAuditLogs.createdAt)).limit(parseInt(limit) || 100);
+    }).from(adminAuditLogs).leftJoin(adminUsers, eq21(adminAuditLogs.adminId, adminUsers.id)).where(conditions.length > 0 ? and11(...conditions) : void 0).orderBy(desc10(adminAuditLogs.createdAt)).limit(parseInt(limit) || 100);
     res.json({
       success: true,
       logs,
@@ -9370,16 +9769,16 @@ var getAuditStats = async (req, res) => {
     since.setDate(since.getDate() - parseInt(days));
     const [totalActions] = await db.select({ count: sql4`count(*)` }).from(adminAuditLogs).where(gte6(adminAuditLogs.createdAt, since));
     const [failedActions] = await db.select({ count: sql4`count(*)` }).from(adminAuditLogs).where(
-      and12(
+      and11(
         gte6(adminAuditLogs.createdAt, since),
-        eq20(adminAuditLogs.status, "FAILED")
+        eq21(adminAuditLogs.status, "FAILED")
       )
     );
     const actionsByAdmin = await db.select({
       adminId: adminAuditLogs.adminId,
       adminName: adminUsers.name,
       count: sql4`count(*)`
-    }).from(adminAuditLogs).leftJoin(adminUsers, eq20(adminAuditLogs.adminId, adminUsers.id)).where(gte6(adminAuditLogs.createdAt, since)).groupBy(adminAuditLogs.adminId, adminUsers.name).orderBy(desc9(sql4`count(*)`));
+    }).from(adminAuditLogs).leftJoin(adminUsers, eq21(adminAuditLogs.adminId, adminUsers.id)).where(gte6(adminAuditLogs.createdAt, since)).groupBy(adminAuditLogs.adminId, adminUsers.name).orderBy(desc10(sql4`count(*)`));
     const criticalActions = await db.select({
       log: adminAuditLogs,
       admin: {
@@ -9388,12 +9787,12 @@ var getAuditStats = async (req, res) => {
         email: adminUsers.email,
         role: adminUsers.role
       }
-    }).from(adminAuditLogs).leftJoin(adminUsers, eq20(adminAuditLogs.adminId, adminUsers.id)).where(
-      and12(
+    }).from(adminAuditLogs).leftJoin(adminUsers, eq21(adminAuditLogs.adminId, adminUsers.id)).where(
+      and11(
         gte6(adminAuditLogs.createdAt, since),
         sql4`${adminAuditLogs.action} IN ('DELETE_USER', 'GRANT_LIFETIME_ACCESS', 'REVOKE_LIFETIME_ACCESS')`
       )
-    ).orderBy(desc9(adminAuditLogs.createdAt)).limit(10);
+    ).orderBy(desc10(adminAuditLogs.createdAt)).limit(10);
     res.json({
       success: true,
       stats: {
@@ -9768,7 +10167,7 @@ var admin_default = router32;
 import { Router as Router24 } from "express";
 
 // controllers/analytics/templatesController.ts
-import { sql as sql5, and as and13, gte as gte7, lte as lte3, desc as desc10 } from "drizzle-orm";
+import { sql as sql5, and as and12, gte as gte7, lte as lte3, desc as desc11 } from "drizzle-orm";
 var templatesWithTheirIds = {
   "1": "Quote Template",
   "2": "Text Typing Template",
@@ -9800,11 +10199,11 @@ var getMostUsedTemplates = async (req, res) => {
       templateId: renders.templateId,
       count: sql5`cast(count(*) as integer)`
     }).from(renders).where(
-      and13(
+      and12(
         gte7(renders.renderedAt, startDate),
         lte3(renders.renderedAt, endDate)
       )
-    ).groupBy(renders.templateId).orderBy(desc10(sql5`count(*)`)).limit(1);
+    ).groupBy(renders.templateId).orderBy(desc11(sql5`count(*)`)).limit(1);
     if (templates2.length === 0) {
       console.log(`\u26A0\uFE0F No templates found for year ${year}`);
       return res.json({
@@ -9848,11 +10247,11 @@ var getTopTemplates = async (req, res) => {
       templateId: renders.templateId,
       count: sql5`cast(count(*) as integer)`
     }).from(renders).where(
-      and13(
+      and12(
         gte7(renders.renderedAt, startDate),
         lte3(renders.renderedAt, endDate)
       )
-    ).groupBy(renders.templateId).orderBy(desc10(sql5`count(*)`)).limit(limit);
+    ).groupBy(renders.templateId).orderBy(desc11(sql5`count(*)`)).limit(limit);
     const results = templates2.map((t) => ({
       templateId: t.templateId,
       templateName: templatesWithTheirIds[t.templateId] || "Unknown Template",
@@ -9880,7 +10279,7 @@ import express10 from "express";
 
 // controllers/promptImprovement/promptImprovementController.ts
 import axios6 from "axios";
-var improvePrompt = async (req, res) => {
+var improvePrompt2 = async (req, res) => {
   try {
     const authUser = req.user;
     const userId = authUser?.id ?? authUser?.userId;
@@ -9946,7 +10345,7 @@ Original prompt: ${prompt.trim()}`
 
 // routes/apis/promptImprovement.ts
 var router34 = express10.Router();
-router34.post("/improve", requireAuth, improvePrompt);
+router34.post("/improve", requireAuth, improvePrompt2);
 var promptImprovement_default = router34;
 
 // routes/apis/bunny.ts
@@ -10082,6 +10481,444 @@ router35.delete("/delete/:filename", deleteFileFromBunny);
 router35.get("/list", listFilesFromBunny);
 var bunny_default = router35;
 
+// routes/usage.ts
+import { Router as Router25 } from "express";
+
+// controllers/usage/usageController.ts
+import { eq as eq22, desc as desc12 } from "drizzle-orm";
+var PLAN_LIMITS2 = {
+  free: {
+    videosPerMonth: 5,
+    aiGenerationsPerDay: 1,
+    maxQuality: "720p",
+    hasWatermark: true,
+    templates: "basic",
+    requiresTracking: true
+  },
+  starter: {
+    videosPerMonth: 30,
+    aiGenerationsPerDay: 20,
+    maxQuality: "1080p",
+    hasWatermark: false,
+    templates: "all",
+    requiresTracking: true
+  },
+  pro: {
+    videosPerMonth: Infinity,
+    aiGenerationsPerDay: Infinity,
+    maxQuality: "4K",
+    hasWatermark: false,
+    templates: "all",
+    requiresTracking: false
+    // ✅ Unlimited = no tracking
+  },
+  team: {
+    videosPerMonth: Infinity,
+    aiGenerationsPerDay: Infinity,
+    maxQuality: "4K",
+    hasWatermark: false,
+    templates: "all",
+    requiresTracking: false
+    // ✅ Unlimited = no tracking
+  },
+  lifetime: {
+    videosPerMonth: Infinity,
+    aiGenerationsPerDay: Infinity,
+    maxQuality: "4K",
+    hasWatermark: false,
+    templates: "all",
+    requiresTracking: false
+    // ✅ Unlimited = no tracking
+  }
+};
+async function getOrCreateUsageTracking2(userId) {
+  let [usage] = await db.select().from(usageTracking).where(eq22(usageTracking.userId, userId));
+  if (!usage) {
+    [usage] = await db.insert(usageTracking).values({
+      userId,
+      videosThisMonth: 0,
+      aiGenerationsToday: 0,
+      lastVideoReset: /* @__PURE__ */ new Date(),
+      lastAiReset: /* @__PURE__ */ new Date()
+    }).returning();
+  }
+  return usage;
+}
+function needsMonthlyReset(lastReset) {
+  const now = /* @__PURE__ */ new Date();
+  return now.getMonth() !== lastReset.getMonth() || now.getFullYear() !== lastReset.getFullYear();
+}
+function needsDailyReset2(lastReset) {
+  const now = /* @__PURE__ */ new Date();
+  return now.toDateString() !== lastReset.toDateString();
+}
+async function getUserPlan2(userId) {
+  const [subscription] = await db.select().from(subscriptions).where(eq22(subscriptions.userId, userId)).orderBy(desc12(subscriptions.createdAt)).limit(1);
+  if (!subscription) {
+    return "free";
+  }
+  if (subscription.isLifetime) {
+    return "lifetime";
+  }
+  if (subscription.status === "active") {
+    return subscription.plan;
+  }
+  return "free";
+}
+var canCreateVideo = async (req, res) => {
+  try {
+    const userId = req.user?.userId;
+    if (!userId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+    const plan = await getUserPlan2(userId);
+    const planConfig = PLAN_LIMITS2[plan];
+    if (!planConfig.requiresTracking) {
+      return res.json({
+        canCreate: true,
+        remaining: Infinity,
+        limit: Infinity,
+        used: 0,
+        plan,
+        unlimited: true
+      });
+    }
+    let usage = await getOrCreateUsageTracking2(userId);
+    if (needsMonthlyReset(usage.lastVideoReset)) {
+      [usage] = await db.update(usageTracking).set({
+        videosThisMonth: 0,
+        lastVideoReset: /* @__PURE__ */ new Date(),
+        updatedAt: /* @__PURE__ */ new Date()
+      }).where(eq22(usageTracking.userId, userId)).returning();
+    }
+    const canCreate = usage.videosThisMonth < planConfig.videosPerMonth;
+    const remaining = Math.max(0, planConfig.videosPerMonth - usage.videosThisMonth);
+    res.json({
+      canCreate,
+      remaining,
+      limit: planConfig.videosPerMonth,
+      used: usage.videosThisMonth,
+      plan,
+      unlimited: false
+    });
+  } catch (error) {
+    console.error("Error checking video creation:", error);
+    res.status(500).json({ error: "Failed to check usage" });
+  }
+};
+var incrementVideoCount = async (req, res) => {
+  try {
+    const userId = req.user?.userId;
+    if (!userId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+    const plan = await getUserPlan2(userId);
+    const planConfig = PLAN_LIMITS2[plan];
+    if (!planConfig.requiresTracking) {
+      return res.json({
+        success: true,
+        videosCreated: 0,
+        unlimited: true
+      });
+    }
+    let usage = await getOrCreateUsageTracking2(userId);
+    if (needsMonthlyReset(usage.lastVideoReset)) {
+      usage.videosThisMonth = 0;
+      usage.lastVideoReset = /* @__PURE__ */ new Date();
+    }
+    [usage] = await db.update(usageTracking).set({
+      videosThisMonth: usage.videosThisMonth + 1,
+      updatedAt: /* @__PURE__ */ new Date()
+    }).where(eq22(usageTracking.userId, userId)).returning();
+    res.json({
+      success: true,
+      videosCreated: usage.videosThisMonth,
+      unlimited: false
+    });
+  } catch (error) {
+    console.error("Error incrementing video count:", error);
+    res.status(500).json({ error: "Failed to increment usage" });
+  }
+};
+var canGenerateAI = async (req, res) => {
+  try {
+    const userId = req.user?.userId;
+    if (!userId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+    const plan = await getUserPlan2(userId);
+    const planConfig = PLAN_LIMITS2[plan];
+    if (!planConfig.requiresTracking) {
+      return res.json({
+        canGenerate: true,
+        remaining: Infinity,
+        limit: Infinity,
+        used: 0,
+        plan,
+        unlimited: true
+      });
+    }
+    let usage = await getOrCreateUsageTracking2(userId);
+    if (needsDailyReset2(usage.lastAiReset)) {
+      [usage] = await db.update(usageTracking).set({
+        aiGenerationsToday: 0,
+        lastAiReset: /* @__PURE__ */ new Date(),
+        updatedAt: /* @__PURE__ */ new Date()
+      }).where(eq22(usageTracking.userId, userId)).returning();
+    }
+    const canGenerate = usage.aiGenerationsToday < planConfig.aiGenerationsPerDay;
+    const remaining = Math.max(0, planConfig.aiGenerationsPerDay - usage.aiGenerationsToday);
+    res.json({
+      canGenerate,
+      remaining,
+      limit: planConfig.aiGenerationsPerDay,
+      used: usage.aiGenerationsToday,
+      plan,
+      unlimited: false
+    });
+  } catch (error) {
+    console.error("Error checking AI generation:", error);
+    res.status(500).json({ error: "Failed to check usage" });
+  }
+};
+var incrementAICount = async (req, res) => {
+  try {
+    const userId = req.user?.userId;
+    if (!userId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+    const plan = await getUserPlan2(userId);
+    const planConfig = PLAN_LIMITS2[plan];
+    if (!planConfig.requiresTracking) {
+      return res.json({
+        success: true,
+        aiGenerations: 0,
+        unlimited: true
+      });
+    }
+    let usage = await getOrCreateUsageTracking2(userId);
+    if (needsDailyReset2(usage.lastAiReset)) {
+      usage.aiGenerationsToday = 0;
+      usage.lastAiReset = /* @__PURE__ */ new Date();
+    }
+    [usage] = await db.update(usageTracking).set({
+      aiGenerationsToday: usage.aiGenerationsToday + 1,
+      updatedAt: /* @__PURE__ */ new Date()
+    }).where(eq22(usageTracking.userId, userId)).returning();
+    res.json({
+      success: true,
+      aiGenerations: usage.aiGenerationsToday,
+      unlimited: false
+    });
+  } catch (error) {
+    console.error("Error incrementing AI count:", error);
+    res.status(500).json({ error: "Failed to increment usage" });
+  }
+};
+var getUsageStats = async (req, res) => {
+  try {
+    const userId = req.user?.userId;
+    if (!userId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+    const plan = await getUserPlan2(userId);
+    const planConfig = PLAN_LIMITS2[plan];
+    if (!planConfig.requiresTracking) {
+      return res.json({
+        plan,
+        unlimited: true,
+        limits: {
+          videosPerMonth: Infinity,
+          aiGenerationsPerDay: Infinity
+        },
+        usage: {
+          videosThisMonth: 0,
+          aiGenerationsToday: 0
+        },
+        remaining: {
+          videos: Infinity,
+          aiGenerations: Infinity
+        },
+        features: {
+          maxQuality: planConfig.maxQuality,
+          hasWatermark: planConfig.hasWatermark,
+          templates: planConfig.templates
+        }
+      });
+    }
+    let usage = await getOrCreateUsageTracking2(userId);
+    if (needsMonthlyReset(usage.lastVideoReset)) {
+      usage.videosThisMonth = 0;
+    }
+    if (needsDailyReset2(usage.lastAiReset)) {
+      usage.aiGenerationsToday = 0;
+    }
+    res.json({
+      plan,
+      unlimited: false,
+      limits: {
+        videosPerMonth: planConfig.videosPerMonth,
+        aiGenerationsPerDay: planConfig.aiGenerationsPerDay
+      },
+      usage: {
+        videosThisMonth: usage.videosThisMonth,
+        aiGenerationsToday: usage.aiGenerationsToday
+      },
+      remaining: {
+        videos: Math.max(0, planConfig.videosPerMonth - usage.videosThisMonth),
+        aiGenerations: Math.max(0, planConfig.aiGenerationsPerDay - usage.aiGenerationsToday)
+      },
+      features: {
+        maxQuality: planConfig.maxQuality,
+        hasWatermark: planConfig.hasWatermark,
+        templates: planConfig.templates
+      }
+    });
+  } catch (error) {
+    console.error("Error getting usage stats:", error);
+    res.status(500).json({ error: "Failed to get usage stats" });
+  }
+};
+var getPlanFeatures = async (req, res) => {
+  try {
+    const userId = req.user?.userId;
+    if (!userId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+    const plan = await getUserPlan2(userId);
+    const planConfig = PLAN_LIMITS2[plan];
+    res.json({
+      plan,
+      features: {
+        maxQuality: planConfig.maxQuality,
+        hasWatermark: planConfig.hasWatermark,
+        templates: planConfig.templates
+      },
+      limits: {
+        videosPerMonth: planConfig.videosPerMonth,
+        aiGenerationsPerDay: planConfig.aiGenerationsPerDay
+      }
+    });
+  } catch (error) {
+    console.error("Error getting plan features:", error);
+    res.status(500).json({ error: "Failed to get plan features" });
+  }
+};
+
+// routes/usage.ts
+var router36 = Router25();
+router36.use(requireAuth);
+router36.get("/can-create-video", canCreateVideo);
+router36.post("/increment-video", incrementVideoCount);
+router36.get("/can-generate-ai", canGenerateAI);
+router36.post("/increment-ai", incrementAICount);
+router36.get("/stats", getUsageStats);
+router36.get("/features", getPlanFeatures);
+var usage_default = router36;
+
+// routes/apis/pollinations.ts
+import { Router as Router26 } from "express";
+import axios8 from "axios";
+var router37 = Router26();
+var POLLINATIONS_API_KEY = process.env.POLLINATIONS_API_KEY || "";
+router37.post("/generate", async (req, res) => {
+  try {
+    const { prompt, width, height, model: model2, seed } = req.body;
+    if (!prompt || prompt.trim().length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: "Prompt is required"
+      });
+    }
+    console.log("[Pollinations] Generating image...", {
+      prompt: prompt.substring(0, 50),
+      model: model2,
+      dimensions: `${width}x${height}`,
+      seed,
+      hasApiKey: !!POLLINATIONS_API_KEY
+    });
+    const encodedPrompt = encodeURIComponent(prompt);
+    let imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=${width}&height=${height}&model=${model2}&nologo=true&enhance=false`;
+    if (seed) {
+      imageUrl += `&seed=${seed}`;
+    }
+    if (POLLINATIONS_API_KEY) {
+      imageUrl += `&apikey=${POLLINATIONS_API_KEY}`;
+    }
+    const headers = {
+      "User-Agent": "ViralMotion/1.0"
+    };
+    const response = await axios8.get(imageUrl, {
+      headers,
+      responseType: "arraybuffer",
+      timeout: 6e4,
+      // 60 seconds
+      maxContentLength: 10 * 1024 * 1024
+      // 10MB max
+    });
+    const base64Image = Buffer.from(response.data).toString("base64");
+    const mimeType = response.headers["content-type"] || "image/png";
+    const dataUri = `data:${mimeType};base64,${base64Image}`;
+    console.log("[Pollinations] \u2705 Image generated successfully");
+    res.json({
+      success: true,
+      imageUrl: dataUri,
+      metadata: {
+        model: model2,
+        dimensions: `${width}x${height}`,
+        seed
+      }
+    });
+  } catch (error) {
+    console.error("[Pollinations] \u274C Generation error:", error.message);
+    if (error.response?.status === 429) {
+      return res.status(429).json({
+        success: false,
+        error: "Rate limit exceeded. Please try again in a moment."
+      });
+    }
+    if (error.response?.status === 401 || error.response?.status === 403) {
+      return res.status(401).json({
+        success: false,
+        error: "Invalid API credentials. Please check your Pollinations API key."
+      });
+    }
+    if (error.code === "ECONNABORTED" || error.code === "ETIMEDOUT") {
+      return res.status(504).json({
+        success: false,
+        error: "Request timed out. The image generation took too long."
+      });
+    }
+    res.status(500).json({
+      success: false,
+      error: error.message || "Failed to generate image with Pollinations",
+      details: process.env.NODE_ENV === "development" ? error.stack : void 0
+    });
+  }
+});
+router37.get("/health", async (req, res) => {
+  try {
+    const testUrl = "https://image.pollinations.ai/prompt/test?width=64&height=64&nologo=true";
+    const response = await axios8.get(testUrl, {
+      timeout: 5e3,
+      validateStatus: (status) => status < 500
+    });
+    res.json({
+      success: true,
+      status: "operational",
+      responseTime: response.headers["x-response-time"] || "unknown",
+      hasApiKey: !!POLLINATIONS_API_KEY
+    });
+  } catch (error) {
+    res.status(503).json({
+      success: false,
+      status: "degraded",
+      error: error.message
+    });
+  }
+});
+var pollinations_default = router37;
+
 // index.ts
 var app = express12();
 if (process.env.NODE_ENV === "production") {
@@ -10107,7 +10944,6 @@ app.use(
       }
     },
     credentials: true,
-    // Allow cookies to be sent
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization", "X-2FA-Verified", "X-Reauth-Token"],
     exposedHeaders: ["Set-Cookie"]
@@ -10129,7 +10965,6 @@ app.use(
     saveUninitialized: false,
     cookie: {
       secure: process.env.NODE_ENV === "production",
-      // HTTPS only in production
       httpOnly: true,
       maxAge: 24 * 60 * 60 * 1e3
     }
@@ -10177,8 +11012,10 @@ app.use("/admin", admin_default);
 app.use("/api/analytics", analytics_default);
 app.use("/api/prompt-improvement", promptImprovement_default);
 app.use("/api/proxy", proxy_default);
+app.use("/api/usage", usage_default);
 app.use("/cloudinary", screenshotSaver_default);
 app.use("/api/bunny", bunny_default);
+app.use("/api/pollinations", pollinations_default);
 app.use((req, res) => {
   res.status(404).json({
     error: "Route not found",
@@ -10215,6 +11052,7 @@ app.listen(PORT, "0.0.0.0", () => {
   console.log(`\u{1F6E1}\uFE0F  Rate limiting: Active`);
   console.log(`\u{1F36A} Cookie support: Active`);
   console.log(`\u{1F4CA} Environment: ${process.env.NODE_ENV || "development"}`);
+  console.log(`\u{1FA9D} Webhook endpoint: POST /api/subscription/webhook`);
   console.log("=================================");
 });
 var index_default = app;
