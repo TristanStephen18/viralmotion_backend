@@ -178,7 +178,7 @@ router.post("/login", authRateLimiter, validateLoginInput, async (req, res) => {
         .where(eq(users.id, user.id));
 
       return res.status(403).json({
-        error: "Too many failed attempts. Account locked for 15 minutes.",
+        error: "Too many failed attempts. Account locked for 5 minutes.",
         lockoutUntil,
       });
     }
