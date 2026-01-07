@@ -48,6 +48,7 @@ import promptImprovementRoutes from "./routes/apis/promptImprovement.ts";
 import bunnyRoutes from './routes/apis/bunny.ts';
 import usageRoutes from "./routes/usage.ts";
 import pollinationsRoutes from './routes/apis/pollinations.ts';
+import redditPostRoutes from './routes/redditPost.routes.ts';
 
 const app = express();
 
@@ -181,6 +182,7 @@ app.use("/api/usage", usageRoutes);
 app.use("/cloudinary", ssToCloudinaryRoutes);
 app.use("/api/bunny", bunnyRoutes);
 app.use("/api/pollinations", pollinationsRoutes);
+app.use('/api/reddit-posts', redditPostRoutes);
 
 // 404 handler
 app.use((req, res) => {
