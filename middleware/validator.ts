@@ -25,8 +25,35 @@ export const validatePassword = (password: string): { valid: boolean; errors: st
     errors.push("Password must contain at least one number");
   }
 
-  if (PASSWORD_REQUIREMENTS.requireSpecialChars && !/[!@#$%^&*(),.?":{}|<>]/.test(password)) {
-    errors.push("Password must contain at least one special character");
+  // ✅ UPDATED: Added underscore (_) and hyphen (-) to special characters
+  if (PASSWORD_REQUIREMENTS.requireSpecialChars && !/[!@#$%^&*(),.?":{}|<>_\-]/.test(password)) {
+    errors.push("Password must contain at least one special character (!@#$%^&*(),.?\":{}|<>_-)");
+  }
+
+  return { valid: errors.length === 0, errors };
+};
+
+// ✅ NEW: Validate username
+export const validateUsername = (username: string): { valid: boolean; errors: string[] } => {
+  const errors: string[] = [];
+
+  if (username.length < 3 || username.length > 30) {
+    errors.push("Username must be between 3 and 30 characters");
+  }
+
+  // ✅ No spaces allowed
+  if (/\s/.test(username)) {
+    errors.push("Username cannot contain spaces");
+  }
+
+  // ✅ Only allow alphanumeric, underscore, hyphen, and period
+  if (!/^[a-zA-Z0-9._-]+$/.test(username)) {
+    errors.push("Username can only contain letters, numbers, dots, underscores, and hyphens");
+  }
+
+  // ✅ Must start with alphanumeric
+  if (!/^[a-zA-Z0-9]/.test(username)) {
+    errors.push("Username must start with a letter or number");
   }
 
   return { valid: errors.length === 0, errors };
@@ -52,28 +79,34 @@ export const validateSignupInput = (req: Request, res: Response, next: NextFunct
     return res.status(400).json({ error: passwordCheck.errors.join(". ") });
   }
 
-  if (name.length < 2 || name.length > 50) {
-    return res.status(400).json({ error: "Name must be between 2 and 50 characters" });
+  // ✅ NEW: Validate username format
+  const usernameCheck = validateUsername(name);
+  if (!usernameCheck.valid) {
+    return res.status(400).json({ error: usernameCheck.errors.join(". ") });
   }
 
   req.body.email = validator.normalizeEmail(email) || email.toLowerCase();
-  req.body.name = sanitizeInput(name);
+  req.body.name = name.trim(); // Don't escape username
 
   next();
 };
 
+// ✅ UPDATED: Accept username OR email
 export const validateLoginInput = (req: Request, res: Response, next: NextFunction) => {
-  const { email, password } = req.body;
+  const { identifier, password } = req.body;
 
-  if (!email || !password) {
-    return res.status(400).json({ error: "Email and password are required" });
+  if (!identifier || !password) {
+    return res.status(400).json({ error: "Username/Email and password are required" });
   }
 
-  if (!validateEmail(email)) {
-    return res.status(400).json({ error: "Invalid email address" });
+  // Normalize identifier (email or username)
+  if (validateEmail(identifier)) {
+    req.body.identifier = validator.normalizeEmail(identifier) || identifier.toLowerCase();
+    req.body.isEmail = true;
+  } else {
+    req.body.identifier = identifier.trim();
+    req.body.isEmail = false;
   }
-
-  req.body.email = validator.normalizeEmail(email) || email.toLowerCase();
 
   next();
 };

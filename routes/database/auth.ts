@@ -66,12 +66,24 @@ router.post(
     try {
       const { email, password, name } = req.body;
 
-      const existing = await db
+      // ✅ Check if email exists
+      const existingEmail = await db
         .select()
         .from(users)
         .where(eq(users.email, email));
-      if (existing.length > 0) {
-        return res.status(400).json({ error: "Invalid registration details" });
+      
+      if (existingEmail.length > 0) {
+        return res.status(400).json({ error: "Email already registered" });
+      }
+
+      // ✅ NEW: Check if username exists
+      const existingUsername = await db
+        .select()
+        .from(users)
+        .where(eq(users.name, name));
+      
+      if (existingUsername.length > 0) {
+        return res.status(400).json({ error: "Username already taken" });
       }
 
       const passwordHash = await hashPassword(password);
@@ -89,8 +101,6 @@ router.post(
         })
         .returning();
 
-      // ❌ REMOVED: Free trial creation
-      // Users start on Free plan with NO subscription record
       console.log(`✅ New user created: ${newUser.id} (${email}) - Free plan (no subscription)`);
 
       const protocol = req.protocol;
@@ -113,13 +123,20 @@ router.post("/login", authRateLimiter, validateLoginInput, async (req, res) => {
   const ipAddress = req.ip || req.socket.remoteAddress || "unknown";
 
   try {
-    const { email, password } = req.body;
+    const { identifier, password, isEmail } = req.body;
 
-    const [user] = await db.select().from(users).where(eq(users.email, email));
+    // ✅ UPDATED: Find user by email OR username
+    let user;
+    
+    if (isEmail) {
+      [user] = await db.select().from(users).where(eq(users.email, identifier));
+    } else {
+      [user] = await db.select().from(users).where(eq(users.name, identifier));
+    }
 
     if (!user || !user.passwordHash) {
       await db.insert(loginAttempts).values({
-        email,
+        email: user?.email || identifier,
         ipAddress,
         successful: false,
       });
@@ -127,7 +144,7 @@ router.post("/login", authRateLimiter, validateLoginInput, async (req, res) => {
       return res.status(400).json({ error: "Invalid credentials" });
     }
 
-    // ✅ NEW: Check if account is locked
+    // ✅ Check if account is locked
     if (
       user.accountLocked &&
       user.lockoutUntil &&
@@ -145,14 +162,13 @@ router.post("/login", authRateLimiter, validateLoginInput, async (req, res) => {
       .from(loginAttempts)
       .where(
         and(
-          eq(loginAttempts.email, email),
+          eq(loginAttempts.email, user.email),
           gte(loginAttempts.attemptedAt, fifteenMinutesAgo),
           eq(loginAttempts.successful, false)
         )
       );
 
     if (recentAttempts.length >= LOCKOUT_CONFIG.maxAttempts) {
-      // Lock account
       const lockoutUntil = new Date(
         Date.now() + LOCKOUT_CONFIG.lockoutDuration
       );
@@ -177,7 +193,7 @@ router.post("/login", authRateLimiter, validateLoginInput, async (req, res) => {
 
     if (!valid) {
       await db.insert(loginAttempts).values({
-        email,
+        email: user.email,
         ipAddress,
         successful: false,
       });
@@ -186,7 +202,7 @@ router.post("/login", authRateLimiter, validateLoginInput, async (req, res) => {
     }
 
     await db.insert(loginAttempts).values({
-      email,
+      email: user.email,
       ipAddress,
       successful: true,
     });
