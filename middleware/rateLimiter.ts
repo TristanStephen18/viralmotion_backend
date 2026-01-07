@@ -20,12 +20,12 @@ export const generalRateLimiter = rateLimit({
   message: { error: "Too many requests, please try again later" },
 });
 
-// Auth rate limiter (5 login attempts per 15 minutes)
+// Auth rate limiter (5 login attempts per 5 minutes)
 export const authRateLimiter = rateLimit({
   ...rateLimitConfig,
-  windowMs: 15 * 60 * 1000,
+  windowMs: 5 * 60 * 1000,
   max: 5,
-  message: { error: "Too many login attempts, please try again after 15 minutes" },
+  message: { error: "Too many login attempts, please try again after 5 minutes" },
   skipSuccessfulRequests: true,
 });
 

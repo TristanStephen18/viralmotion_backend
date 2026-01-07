@@ -423,6 +423,7 @@ router.get("/", requireAuth, async (req: AuthRequest, res) => {
         profilePicture: users.profilePicture,
         twoFactorEnabled: users.twoFactorEnabled,
         lastLogin: users.lastLogin,
+        createdAt: users.createdAt,
       })
       .from(users)
       .where(eq(users.id, userId));
