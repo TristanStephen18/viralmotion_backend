@@ -3,11 +3,9 @@ import {
   getRenderProgress,
   renderMediaOnLambda,
 } from "@remotion/lambda/client";
-
+// Start render endpoint
 export const handleLambdaRendering = async (req: Request, res: Response) => {
   const { inputProps, format, templateId } = req.body;
-  console.log(inputProps);
-  console.log(inputProps.config.layers);
   
   try {
     const { renderId, bucketName } = await renderMediaOnLambda({
@@ -20,28 +18,42 @@ export const handleLambdaRendering = async (req: Request, res: Response) => {
       inputProps,
       privacy: "public",
     });
-    let progress = await getRenderProgress({
-      renderId,
+
+    // Return renderId immediately
+    res.json({ 
+      renderId, 
       bucketName,
+      message: 'Render started' 
+    });
+  } catch (error) {
+    console.error("Render error:", error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+// Progress check endpoint
+export const checkRenderProgress = async (req: Request, res: Response) => {
+  const { renderId, bucketName } = req.query;
+  
+  try {
+    const progress = await getRenderProgress({
+      renderId: renderId as string,
+      bucketName: bucketName as string,
       functionName: "remotion-render-4-0-377-mem2048mb-disk2048mb-120sec",
       region: "us-east-1",
     });
 
-    while (!progress.done) {
-      await new Promise((resolve) => setTimeout(resolve, 10000));
-      progress = await getRenderProgress({
-        renderId,
-        bucketName,
-        functionName: "remotion-render-4-0-377-mem2048mb-disk2048mb-120sec",
-        region: "us-east-1",
-      });
-    }
-    console.log("rendering finished!!\nUrl: ", progress.outputFile)
-
-    // Return the S3 URL
-    res.json({ url: progress.outputFile });
+    res.json({
+      done: progress.done,
+      overallProgress: progress.overallProgress, // 0 to 1
+      renderedFrames: progress.framesRendered,
+      encodedFrames: progress.encodingStatus.framesEncoded,
+      outputFile: progress.outputFile, // Available when done
+      timeToFinish: progress.timeToFinish,
+      errors: progress.errors,
+    });
   } catch (error) {
-    console.error("Render error:", error);
+    console.error("Progress check error:", error);
     res.status(500).json({ error: error.message });
   }
 };

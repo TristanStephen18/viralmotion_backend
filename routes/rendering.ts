@@ -5,7 +5,8 @@ import * as LambdaRenderingController from "../controllers/rendering/LambdaRende
 const router = Router();
 
 router.post('/render-video', MainRenderingController.handleExport);
-router.post('/render-video/lambda', LambdaRenderingController.handleLambdaRendering)
+router.post('/render-video/lambda', LambdaRenderingController.handleLambdaRendering);
+router.get('/getrenderprogress/lambda', LambdaRenderingController.checkRenderProgress);
 
 router.get("/health", (req, res) => {
   res.json({
