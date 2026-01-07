@@ -113,3 +113,78 @@ export const listFilesFromBunny = async (req: Request, res: Response) => {
     });
   }
 };
+
+// Add these at the end of your bunnyUploadController.ts
+export const uploadBase64ToBunny = async (
+  base64Data: string,
+  folder: string = 'reddit-screenshots'
+): Promise<{ success: boolean; fileUrl?: string; fileName?: string; filePath?: string; error?: string }> => {
+  try {
+    const timestamp = Date.now();
+    const random = Math.random().toString(36).substring(2, 15);
+    const fileName = `reddit-${timestamp}-${random}.png`;
+    const filePath = `${folder}/${fileName}`;
+    
+    const base64String = base64Data.includes(',') ? base64Data.split(',')[1] : base64Data;
+    const fileBuffer = Buffer.from(base64String, 'base64');
+    
+    // Simple: Just use the same format as your existing uploadFileToBunny function
+    const uploadUrl = `https://${BUNNY_STORAGE_CONFIG.storageEndpoint}/${BUNNY_STORAGE_CONFIG.storageZoneName}/${filePath}`;
+    
+    console.log('📤 Uploading to:', uploadUrl);
+    
+    const response = await axios.put(uploadUrl, fileBuffer, {
+      headers: { 
+        'AccessKey': BUNNY_STORAGE_CONFIG.apiKey, 
+        'Content-Type': 'image/png' 
+      },
+      maxContentLength: Infinity,
+      maxBodyLength: Infinity,
+    });
+    
+    if (response.status === 201 || response.status === 200) {
+      const fileUrl = `${BUNNY_STORAGE_CONFIG.pullZoneUrl}/${filePath}`;
+      console.log('✅ Upload successful:', fileUrl);
+      
+      return {
+        success: true,
+        fileUrl,
+        fileName,
+        filePath,
+      };
+    }
+    throw new Error('Upload failed');
+  } catch (error: any) {
+    console.error('❌ Upload error:', error.response?.data || error.message);
+    return { 
+      success: false, 
+      error: error.response?.data?.Message || error.message 
+    };
+  }
+};
+
+export const deleteBunnyFileByPath = async (filePath: string): Promise<{ success: boolean; error?: string }> => {
+  try {
+    // Simple: Just use the same format as your existing deleteFileFromBunny function
+    const deleteUrl = `https://${BUNNY_STORAGE_CONFIG.storageEndpoint}/${BUNNY_STORAGE_CONFIG.storageZoneName}/${filePath}`;
+    
+    console.log('🗑️  Deleting from:', deleteUrl);
+    
+    const response = await axios.delete(deleteUrl, {
+      headers: { 'AccessKey': BUNNY_STORAGE_CONFIG.apiKey },
+    });
+    
+    if (response.status === 200 || response.status === 204) {
+      console.log('✅ Delete successful');
+      return { success: true };
+    }
+    
+    throw new Error('Delete failed');
+  } catch (error: any) {
+    console.error('❌ Delete error:', error.response?.data || error.message);
+    return { 
+      success: false, 
+      error: error.response?.data?.Message || error.message 
+    };
+  }
+};
