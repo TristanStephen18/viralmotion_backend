@@ -8,7 +8,7 @@ import type { AuthRequest } from "../../utils/authmiddleware.ts";
 const PLAN_LIMITS = {
   free: {
     videosPerMonth: 5,
-    aiGenerationsPerDay: 1,
+    aiGenerationsPerDay: 5,
     maxQuality: '720p',
     hasWatermark: true,
     templates: 'basic',
