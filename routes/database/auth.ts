@@ -96,7 +96,7 @@ router.post(
           passwordHash,
           provider: "local",
           profilePicture:
-            "https://res.cloudinary.com/dnxc1lw18/image/upload/v1761048476/pfp_yitfgl.jpg",
+            "https://res.cloudinary.com/dfr01aiia/image/upload/v1767763520/default-avatar-icon-of-social-media-user-vector_w3nkhz.jpg",
           verified: false,
         })
         .returning();
