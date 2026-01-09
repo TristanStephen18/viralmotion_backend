@@ -1,5 +1,10 @@
 import type { Request, Response } from "express";
-import { stripe, STRIPE_CONFIG, getPriceId, getPlanFromPriceId } from "../../config/stripe.ts";
+import {
+  stripe,
+  STRIPE_CONFIG,
+  getPriceId,
+  getPlanFromPriceId,
+} from "../../config/stripe.ts";
 import { db } from "../../db/client.ts";
 import { users, subscriptions } from "../../db/schema.ts";
 import { eq, and, desc, sql } from "drizzle-orm";
@@ -56,10 +61,10 @@ export const createCheckoutSession = async (
     }
 
     // Validate plan
-    if (!plan || !['starter', 'pro', 'team'].includes(plan)) {
-      return res.status(400).json({ 
-        success: false, 
-        error: "Invalid plan selected" 
+    if (!plan || !["starter", "pro", "team"].includes(plan)) {
+      return res.status(400).json({
+        success: false,
+        error: "Invalid plan selected",
       });
     }
 
@@ -93,7 +98,7 @@ export const createCheckoutSession = async (
     }
 
     // ✅ Get the correct price ID based on plan
-    const priceId = getPriceId(plan as 'starter' | 'pro' | 'team');
+    const priceId = getPriceId(plan as "starter" | "pro" | "team");
 
     const session = await stripe.checkout.sessions.create({
       customer: customerId,
@@ -106,7 +111,7 @@ export const createCheckoutSession = async (
         },
       ],
       subscription_data: {
-        metadata: { 
+        metadata: {
           userId: user.id.toString(),
           plan, // ✅ Store plan in metadata
         },
@@ -117,7 +122,7 @@ export const createCheckoutSession = async (
       cancel_url: `${
         process.env.CLIENT_URL || process.env.FRONTEND_URL
       }/pricing`,
-      metadata: { 
+      metadata: {
         userId: user.id.toString(),
         plan, // ✅ Store plan
       },
@@ -152,10 +157,12 @@ export const getSubscriptionStatus = async (req: Request, res: Response) => {
       return res.status(404).json({ success: false, error: "User not found" });
     }
 
-    console.log(`📊 Checking subscription status for user ${user.id} (${user.email})`);
+    console.log(
+      `📊 Checking subscription status for user ${user.id} (${user.email})`
+    );
 
     const isLifetime = await hasLifetimeAccess(user.id);
-    
+
     if (isLifetime) {
       console.log(`✅ User ${user.id} has lifetime access`);
       return res.json({
@@ -357,7 +364,7 @@ export const reactivateSubscription = async (
 export const createSetupIntent = async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.user?.userId;
-    const { plan = 'pro' } = req.body; // ✅ NEW: Default to pro
+    const { plan = "pro" } = req.body; // ✅ NEW: Default to pro
 
     if (!userId) {
       return res.status(401).json({ success: false, error: "Unauthorized" });
@@ -394,7 +401,7 @@ export const createSetupIntent = async (req: AuthRequest, res: Response) => {
     const setupIntent = await stripe.setupIntents.create({
       customer: customerId,
       payment_method_types: ["card"],
-      metadata: { 
+      metadata: {
         userId: user.id.toString(),
         plan, // ✅ Store plan
       },
@@ -419,7 +426,7 @@ export const createSetupIntent = async (req: AuthRequest, res: Response) => {
 export const confirmSubscription = async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.user?.userId;
-    const { paymentMethodId, plan = 'pro' } = req.body; // ✅ NEW
+    const { paymentMethodId, plan = "pro" } = req.body; // ✅ NEW
 
     if (!userId) {
       return res.status(401).json({ success: false, error: "Unauthorized" });
@@ -432,7 +439,7 @@ export const confirmSubscription = async (req: AuthRequest, res: Response) => {
     }
 
     // Validate plan
-    if (!['starter', 'pro', 'team'].includes(plan)) {
+    if (!["starter", "pro", "team"].includes(plan)) {
       return res.status(400).json({ success: false, error: "Invalid plan" });
     }
 
@@ -443,9 +450,7 @@ export const confirmSubscription = async (req: AuthRequest, res: Response) => {
         .json({ success: false, error: "Customer not found" });
     }
 
-    console.log(
-      `📝 Confirming ${plan} subscription for user ${userId}...`
-    );
+    console.log(`📝 Confirming ${plan} subscription for user ${userId}...`);
 
     // Attach payment method
     await stripe.paymentMethods.attach(paymentMethodId, {
@@ -459,7 +464,7 @@ export const confirmSubscription = async (req: AuthRequest, res: Response) => {
     });
 
     // ✅ Get correct price ID
-    const priceId = getPriceId(plan as 'starter' | 'pro' | 'team');
+    const priceId = getPriceId(plan as "starter" | "pro" | "team");
 
     // Create subscription
     const subscription = await stripe.subscriptions.create({
@@ -470,7 +475,7 @@ export const confirmSubscription = async (req: AuthRequest, res: Response) => {
         save_default_payment_method: "on_subscription",
       },
       expand: ["latest_invoice.payment_intent"],
-      metadata: { 
+      metadata: {
         userId: user.id.toString(),
         plan, // ✅ Store plan
       },
@@ -524,6 +529,42 @@ export const confirmSubscription = async (req: AuthRequest, res: Response) => {
       .from(subscriptions)
       .where(eq(subscriptions.stripeSubscriptionId, subscription.id));
 
+    // ✅ NEW: Fetch invoice data (add this section)
+    let invoiceData = null;
+    try {
+      const latestInvoiceId = subscription.latest_invoice;
+      if (latestInvoiceId) {
+        let invoiceId: string;
+
+        // Handle if latest_invoice is an object or string
+        if (typeof latestInvoiceId === "string") {
+          invoiceId = latestInvoiceId;
+        } else if (
+          typeof latestInvoiceId === "object" &&
+          latestInvoiceId !== null
+        ) {
+          invoiceId = (latestInvoiceId as any).id;
+        } else {
+          throw new Error("Invalid invoice ID format");
+        }
+
+        const invoice = await stripe.invoices.retrieve(invoiceId);
+
+        invoiceData = {
+          invoiceNumber: invoice.number || invoice.id,
+          invoiceUrl: invoice.hosted_invoice_url,
+          invoicePdf: invoice.invoice_pdf,
+          amountPaid: invoice.amount_paid,
+          currency: invoice.currency?.toUpperCase() || "USD",
+        };
+
+        console.log(`✅ Invoice data fetched: ${invoice.number}`);
+      }
+    } catch (invoiceError) {
+      console.error("⚠️ Failed to fetch invoice (non-critical):", invoiceError);
+      // Don't fail the whole request if invoice fetch fails
+    }
+
     if (webhookCreated) {
       return res.json({
         success: true,
@@ -562,6 +603,57 @@ export const confirmSubscription = async (req: AuthRequest, res: Response) => {
     });
   } catch (error: any) {
     console.error("❌ Confirm subscription error:", error.message);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+export const getInvoiceHistory = async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user?.userId;
+    if (!userId) {
+      return res.status(401).json({ success: false, error: "Unauthorized" });
+    }
+
+    const [user] = await db.select().from(users).where(eq(users.id, userId));
+    if (!user || !user.stripeCustomerId) {
+      return res.status(404).json({
+        success: false,
+        error: "No Stripe customer found",
+      });
+    }
+
+    console.log(`📄 Fetching invoice history for user ${userId}...`);
+
+    // Fetch invoices from Stripe
+    const invoices = await stripe.invoices.list({
+      customer: user.stripeCustomerId,
+      limit: 20, // Last 20 invoices
+    });
+
+    // Format invoice data
+    const formattedInvoices = invoices.data.map((invoice) => ({
+      id: invoice.id,
+      number: invoice.number || invoice.id,
+      amount: invoice.amount_paid,
+      currency: invoice.currency?.toUpperCase() || 'USD',
+      status: invoice.status,
+      paid: invoice.status === 'paid', // ✅ FIXED: Derive from status instead
+      date: invoice.created,
+      periodStart: invoice.period_start,
+      periodEnd: invoice.period_end,
+      hostedInvoiceUrl: invoice.hosted_invoice_url,
+      invoicePdf: invoice.invoice_pdf,
+      description: invoice.lines.data[0]?.description || 'Subscription payment',
+    }));
+
+    console.log(`✅ Found ${formattedInvoices.length} invoices`);
+
+    res.json({
+      success: true,
+      invoices: formattedInvoices,
+    });
+  } catch (error: any) {
+    console.error("❌ Get invoice history error:", error);
     res.status(500).json({ success: false, error: error.message });
   }
 };
