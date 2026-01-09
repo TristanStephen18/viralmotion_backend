@@ -9,6 +9,7 @@ import {
   reactivateSubscription,
   createSetupIntent,      
   confirmSubscription,
+  getInvoiceHistory,
 } from '../controllers/subscription/subscriptionController.ts';
 // ❌ REMOVE WEBHOOK IMPORT
 // import { handleStripeWebhook } from '../controllers/subscription/webhookController.ts';
@@ -27,5 +28,6 @@ router.get('/details', requireAuth, getSubscriptionDetails);
 router.post('/portal', requireAuth, createPortalSession);
 router.post('/cancel', requireAuth, cancelSubscription);
 router.post('/reactivate', requireAuth, reactivateSubscription);
+router.get("/invoices", requireAuth, getInvoiceHistory);
 
 export default router;
