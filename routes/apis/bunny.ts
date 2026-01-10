@@ -1,4 +1,4 @@
-// routes/bunnyUpload.routes.ts
+// routes/apis/bunnyUpload.routes.ts
 import express from 'express';
 import multer from 'multer';
 import {
