@@ -49,6 +49,7 @@ import bunnyRoutes from './routes/apis/bunny.ts';
 import usageRoutes from "./routes/usage.ts";
 import pollinationsRoutes from './routes/apis/pollinations.ts';
 import redditPostRoutes from './routes/redditPost.routes.ts';
+import nodemailerRoutes from './routes/apis/nodemailer.ts';
 
 const app = express();
 
@@ -183,6 +184,9 @@ app.use("/cloudinary", ssToCloudinaryRoutes);
 app.use("/api/bunny", bunnyRoutes);
 app.use("/api/pollinations", pollinationsRoutes);
 app.use('/api/reddit-posts', redditPostRoutes);
+
+//new mailing ruotes created by the great Tristan Rasco
+app.use('/api/mail', nodemailerRoutes);
 
 // 404 handler
 app.use((req, res) => {

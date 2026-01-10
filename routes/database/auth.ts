@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { eq, and, gte, desc } from "drizzle-orm";
+import { eq, and, gte } from "drizzle-orm";
 import {
   users,
   loginAttempts,
@@ -14,7 +14,7 @@ import {
   youtubeDownloads,
 } from "../../db/schema.ts";
 import { db } from "../../db/client.ts";
-import { requireAuth, require2FA } from "../../utils/authmiddleware.ts";
+import { requireAuth } from "../../utils/authmiddleware.ts";
 import type { AuthRequest } from "../../utils/authmiddleware.ts";
 import { sendEmailVerification, sendOtpEmail, sendWelcomeEmail } from "../apis/nodemailer.ts";
 import {
@@ -47,7 +47,7 @@ import {
 } from "../../utils/twoFactor.ts";
 import { JWT_SECRET, LOCKOUT_CONFIG } from "./config.ts";
 import jwt from "jsonwebtoken";
-import { GoTrueAdminApi } from "@supabase/supabase-js";
+// import { GoTrueAdminApi } from "@supabase/supabase-js";
 import { stripe } from "../../config/stripe.ts";
 
 

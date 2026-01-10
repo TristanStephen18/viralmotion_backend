@@ -1,15 +1,26 @@
 import jwt from "jsonwebtoken";
 import sgMail from "@sendgrid/mail";
 import { JWT_SECRET } from "../database/config.ts";
+import { type Request, type Response, Router } from "express";
+import { success } from "zod";
 
 sgMail.setApiKey(process.env.SENDGRID_API_KEY as string);
 
-export async function sendEmailVerification(userId: number, email: string, baseUrl: string) {
+const router = Router();
+
+export async function sendEmailVerification(
+  userId: number,
+  email: string,
+  baseUrl: string
+) {
   console.log("📧 [SendGrid] Preparing to send verification email");
   console.log("📧 [SendGrid] To:", email);
   console.log("📧 [SendGrid] From:", "viralmotion.app@gmail.com");
   console.log("📧 [SendGrid] API Key exists:", !!process.env.SENDGRID_API_KEY);
-  console.log("📧 [SendGrid] API Key starts with:", process.env.SENDGRID_API_KEY?.substring(0, 10));
+  console.log(
+    "📧 [SendGrid] API Key starts with:",
+    process.env.SENDGRID_API_KEY?.substring(0, 10)
+  );
 
   const token = jwt.sign({ userId }, JWT_SECRET, { expiresIn: "1h" });
   const url = `${baseUrl}/auth/verify?token=${token}`;
@@ -47,12 +58,18 @@ export async function sendEmailVerification(userId: number, email: string, baseU
     const response = await sgMail.send(msg);
     console.log("✅ [SendGrid] Email sent successfully!");
     console.log("✅ [SendGrid] Response status:", response[0]?.statusCode);
-    console.log("✅ [SendGrid] Response headers:", JSON.stringify(response[0]?.headers, null, 2));
+    console.log(
+      "✅ [SendGrid] Response headers:",
+      JSON.stringify(response[0]?.headers, null, 2)
+    );
   } catch (error: any) {
     console.error("❌ [SendGrid] Email send error:");
     console.error("❌ [SendGrid] Status code:", error.code);
     console.error("❌ [SendGrid] Message:", error.message);
-    console.error("❌ [SendGrid] Response body:", JSON.stringify(error.response?.body, null, 2));
+    console.error(
+      "❌ [SendGrid] Response body:",
+      JSON.stringify(error.response?.body, null, 2)
+    );
     throw error; // Re-throw so signup route knows it failed
   }
 }
@@ -99,7 +116,9 @@ export async function sendWelcomeEmail(email: string, name?: string) {
       email: "viralmotion.app@gmail.com",
     },
     subject: "Welcome to Viral Motion! 🎉",
-    text: `Welcome to Viral Motion${name ? `, ${name}` : ''}! We're excited to have you on board.`,
+    text: `Welcome to Viral Motion${
+      name ? `, ${name}` : ""
+    }! We're excited to have you on board.`,
     html: `
       <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #0a0a0a; padding: 40px 20px;">
         <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 8px 24px rgba(139, 92, 246, 0.15);">
@@ -111,7 +130,11 @@ export async function sendWelcomeEmail(email: string, name?: string) {
           
           <!-- Content -->
           <div style="padding: 40px 30px;">
-            ${name ? `<p style="font-size: 18px; color: #1a1a1a; margin-bottom: 20px;">Hi <strong style="color: #7c3aed;">${name}</strong>,</p>` : '<p style="font-size: 18px; color: #1a1a1a; margin-bottom: 20px;">Hi there,</p>'}
+            ${
+              name
+                ? `<p style="font-size: 18px; color: #1a1a1a; margin-bottom: 20px;">Hi <strong style="color: #7c3aed;">${name}</strong>,</p>`
+                : '<p style="font-size: 18px; color: #1a1a1a; margin-bottom: 20px;">Hi there,</p>'
+            }
             
             <p style="color: #4a4a4a; line-height: 1.8; margin-bottom: 20px; font-size: 15px;">
               We're <strong style="color: #1a1a1a;">thrilled</strong> to have you join our community! 🎉 Your account has been successfully verified and you're all set to get started.
@@ -158,6 +181,272 @@ export async function sendWelcomeEmail(email: string, name?: string) {
     await sgMail.send(msg);
     console.log("✅ Welcome email sent successfully!");
   } catch (error: any) {
-    console.error("❌ Welcome email send error:", error.response?.body || error.message);
+    console.error(
+      "❌ Welcome email send error:",
+      error.response?.body || error.message
+    );
   }
 }
+
+
+
+
+//create new function/route for leave us a message mailing
+
+router.post('/sendemail', async (req: Request, res: Response)=>{
+  const {name, email, message} = req.body;
+  const msg = {
+    to: "viralmotion.app@gmail.com",
+    from: {
+      name: "Viral Motion",
+      email: "viralmotion.app@gmail.com",
+    },
+    replyTo: email, // This allows you to reply directly to the user
+    subject: `${name} sent us a message`,
+    html: `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>New Contact Form Message</title>
+      </head>
+      <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f9fafb;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f9fafb; padding: 40px 20px;">
+          <tr>
+            <td align="center">
+              <table width="600" cellpadding="0" cellspacing="0" style="background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);">
+                
+                <!-- Header -->
+                <tr>
+                  <td style="background: linear-gradient(135deg, #8b5cf6 0%, #ec4899 100%); padding: 30px; text-align: center;">
+                    <h1 style="margin: 0; color: #ffffff; font-size: 24px; font-weight: 700;">
+                      New Contact Form Message
+                    </h1>
+                  </td>
+                </tr>
+                
+                <!-- Content -->
+                <tr>
+                  <td style="padding: 40px 30px;">
+                    <p style="margin: 0 0 25px 0; font-size: 16px; color: #111827; line-height: 1.5;">
+                      You have received a new message from your ViralMotion landing page contact form.
+                    </p>
+                    
+                    <!-- Sender Info -->
+                    <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom: 30px;">
+                      <tr>
+                        <td style="padding: 15px; background-color: #f9fafb; border-radius: 8px;">
+                          <table width="100%" cellpadding="0" cellspacing="0">
+                            <tr>
+                              <td style="padding: 8px 0; font-size: 14px; color: #6b7280; font-weight: 600;">
+                                Name:
+                              </td>
+                              <td style="padding: 8px 0; font-size: 14px; color: #111827; font-weight: 500;">
+                                ${name}
+                              </td>
+                            </tr>
+                            <tr>
+                              <td style="padding: 8px 0; font-size: 14px; color: #6b7280; font-weight: 600;">
+                                Email:
+                              </td>
+                              <td style="padding: 8px 0; font-size: 14px; color: #111827; font-weight: 500;">
+                                <a href="mailto:${email}" style="color: #8b5cf6; text-decoration: none;">
+                                  ${email}
+                                </a>
+                              </td>
+                            </tr>
+                          </table>
+                        </td>
+                      </tr>
+                    </table>
+                    
+                    <!-- Message -->
+                    <div style="margin-bottom: 25px;">
+                      <p style="margin: 0 0 10px 0; font-size: 14px; color: #6b7280; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">
+                        Message:
+                      </p>
+                      <div style="padding: 20px; background-color: #f9fafb; border-left: 4px solid #8b5cf6; border-radius: 6px;">
+                        <p style="margin: 0; font-size: 15px; color: #111827; line-height: 1.6; white-space: pre-wrap;">
+                          ${message}
+                        </p>
+                      </div>
+                    </div>
+                    
+                    <!-- Reply Button -->
+                    <table width="100%" cellpadding="0" cellspacing="0" style="margin-top: 30px;">
+                      <tr>
+                        <td align="center">
+                          <a href="mailto:${email}" style="display: inline-block; padding: 14px 28px; background-color: #8b5cf6; color: #ffffff; text-decoration: none; font-size: 14px; font-weight: 600; border-radius: 8px; box-shadow: 0 2px 4px rgba(139, 92, 246, 0.2);">
+                            Reply to ${name}
+                          </a>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+                
+                <!-- Footer -->
+                <tr>
+                  <td style="padding: 20px 30px; background-color: #f9fafb; text-align: center; border-top: 1px solid #e5e7eb;">
+                    <p style="margin: 0; font-size: 12px; color: #9ca3af; line-height: 1.5;">
+                      This message was sent from the contact form on your ViralMotion landing page.
+                    </p>
+                  </td>
+                </tr>
+                
+              </table>
+            </td>
+          </tr>
+        </table>
+      </body>
+    </html>
+  `,
+  };
+
+  try {
+    await sgMail.send(msg);
+    console.log("Message sent successfully");
+    res.json({
+      success: true,
+      message: "Email sent successfully"
+    })
+  } catch (error: any) {
+    console.error(
+      "User email not sent:",
+      error.response?.body || error.message
+    );
+    res.status(400).json({
+      success: false,
+      message: "Error sending email"
+    })
+  }
+})
+
+
+// export async function sendUserMessageToSelfEmail(
+//   email: string,
+//   message: string,
+//   name: string,
+// ) {
+//   const msg = {
+//     to: "viralmotion.app@gmail.com",
+//     from: {
+//       name: "Viral Motion",
+//       email: "viralmotion.app@gmail.com",
+//     },
+//     replyTo: email, // This allows you to reply directly to the user
+//     subject: `${name} sent us a message`,
+//     html: `
+//     <!DOCTYPE html>
+//     <html>
+//       <head>
+//         <meta charset="utf-8">
+//         <meta name="viewport" content="width=device-width, initial-scale=1.0">
+//         <title>New Contact Form Message</title>
+//       </head>
+//       <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f9fafb;">
+//         <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f9fafb; padding: 40px 20px;">
+//           <tr>
+//             <td align="center">
+//               <table width="600" cellpadding="0" cellspacing="0" style="background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);">
+                
+//                 <!-- Header -->
+//                 <tr>
+//                   <td style="background: linear-gradient(135deg, #8b5cf6 0%, #ec4899 100%); padding: 30px; text-align: center;">
+//                     <h1 style="margin: 0; color: #ffffff; font-size: 24px; font-weight: 700;">
+//                       New Contact Form Message
+//                     </h1>
+//                   </td>
+//                 </tr>
+                
+//                 <!-- Content -->
+//                 <tr>
+//                   <td style="padding: 40px 30px;">
+//                     <p style="margin: 0 0 25px 0; font-size: 16px; color: #111827; line-height: 1.5;">
+//                       You have received a new message from your ViralMotion landing page contact form.
+//                     </p>
+                    
+//                     <!-- Sender Info -->
+//                     <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom: 30px;">
+//                       <tr>
+//                         <td style="padding: 15px; background-color: #f9fafb; border-radius: 8px;">
+//                           <table width="100%" cellpadding="0" cellspacing="0">
+//                             <tr>
+//                               <td style="padding: 8px 0; font-size: 14px; color: #6b7280; font-weight: 600;">
+//                                 Name:
+//                               </td>
+//                               <td style="padding: 8px 0; font-size: 14px; color: #111827; font-weight: 500;">
+//                                 ${name}
+//                               </td>
+//                             </tr>
+//                             <tr>
+//                               <td style="padding: 8px 0; font-size: 14px; color: #6b7280; font-weight: 600;">
+//                                 Email:
+//                               </td>
+//                               <td style="padding: 8px 0; font-size: 14px; color: #111827; font-weight: 500;">
+//                                 <a href="mailto:${email}" style="color: #8b5cf6; text-decoration: none;">
+//                                   ${email}
+//                                 </a>
+//                               </td>
+//                             </tr>
+//                           </table>
+//                         </td>
+//                       </tr>
+//                     </table>
+                    
+//                     <!-- Message -->
+//                     <div style="margin-bottom: 25px;">
+//                       <p style="margin: 0 0 10px 0; font-size: 14px; color: #6b7280; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">
+//                         Message:
+//                       </p>
+//                       <div style="padding: 20px; background-color: #f9fafb; border-left: 4px solid #8b5cf6; border-radius: 6px;">
+//                         <p style="margin: 0; font-size: 15px; color: #111827; line-height: 1.6; white-space: pre-wrap;">
+//                           ${message}
+//                         </p>
+//                       </div>
+//                     </div>
+                    
+//                     <!-- Reply Button -->
+//                     <table width="100%" cellpadding="0" cellspacing="0" style="margin-top: 30px;">
+//                       <tr>
+//                         <td align="center">
+//                           <a href="mailto:${email}" style="display: inline-block; padding: 14px 28px; background-color: #8b5cf6; color: #ffffff; text-decoration: none; font-size: 14px; font-weight: 600; border-radius: 8px; box-shadow: 0 2px 4px rgba(139, 92, 246, 0.2);">
+//                             Reply to ${name}
+//                           </a>
+//                         </td>
+//                       </tr>
+//                     </table>
+//                   </td>
+//                 </tr>
+                
+//                 <!-- Footer -->
+//                 <tr>
+//                   <td style="padding: 20px 30px; background-color: #f9fafb; text-align: center; border-top: 1px solid #e5e7eb;">
+//                     <p style="margin: 0; font-size: 12px; color: #9ca3af; line-height: 1.5;">
+//                       This message was sent from the contact form on your ViralMotion landing page.
+//                     </p>
+//                   </td>
+//                 </tr>
+                
+//               </table>
+//             </td>
+//           </tr>
+//         </table>
+//       </body>
+//     </html>
+//   `,
+//   };
+
+//   try {
+//     await sgMail.send(msg);
+//     console.log("Message sent successfully");
+//   } catch (error: any) {
+//     console.error(
+//       "User email not sent:",
+//       error.response?.body || error.message
+//     );
+//   }
+// }
+
+export default router;
