@@ -49,6 +49,7 @@ import { JWT_SECRET, LOCKOUT_CONFIG } from "./config.ts";
 import jwt from "jsonwebtoken";
 // import { GoTrueAdminApi } from "@supabase/supabase-js";
 import { stripe } from "../../config/stripe.ts";
+import { redeemCoupon } from "../../controllers/user/couponController.ts";
 
 
 const router = Router();
@@ -949,5 +950,7 @@ router.delete("/delete-account", requireAuth, async (req: AuthRequest, res) => {
     res.status(500).json({ error: "Failed to delete account" });
   }
 });
+
+router.post("/redeem-coupon", requireAuth, redeemCoupon);
 
 export default router;

@@ -210,7 +210,7 @@ export const getVisitAnalytics = async (req: Request, res: Response) => {
   }
 };
 
-// ✅ NEW: Batch analytics tracking (public endpoint)
+// ✅ UPDATED: Better batch analytics tracking
 export const trackAnalyticsBatch = async (req: Request, res: Response) => {
   try {
     const { events } = req.body;
@@ -222,70 +222,96 @@ export const trackAnalyticsBatch = async (req: Request, res: Response) => {
       });
     }
 
-    // ✅ Limit batch size
-    if (events.length > 50) {
+    // ✅ Increased batch size limit
+    if (events.length > 100) {
       return res.status(400).json({
         success: false,
-        error: "Maximum 50 events per batch",
+        error: "Maximum 100 events per batch",
       });
     }
 
     const token = req.headers.authorization?.substring(7);
     let userId: number | null = null;
 
-    // ✅ Get user ID if authenticated (optional)
+    // Get user ID if authenticated (optional)
     if (token) {
       try {
         const decoded = jwt.verify(token, process.env.JWT_SECRET!) as any;
         userId = decoded.userId;
       } catch {
-        // Not authenticated - that's fine for analytics
+        // Not authenticated - that's fine
       }
     }
 
-    // ✅ Process events
+    // ✅ Filter out admin page events
+    const validEvents = events.filter(event => {
+      const page = event.page || '';
+      return !page.startsWith('/admin');
+    });
+
+    if (validEvents.length === 0) {
+      // All events were admin pages - return success but don't store
+      return res.json({ success: true, tracked: 0 });
+    }
+
+    // Process events
     const pageViewPromises: Promise<any>[] = [];
     const eventPromises: Promise<any>[] = [];
 
-    for (const event of events) {
-      if (event.type === "pageView") {
-        pageViewPromises.push(
-          db.insert(pageVisits).values({
-            userId,
-            page: event.page,
-            sessionId: event.sessionId,
-            userAgent: event.userAgent || req.headers["user-agent"] || null,
-            ipAddress: req.ip || null,
-            referrer: event.referrer || req.headers.referer || null,
-            visitedAt: new Date(event.timestamp),
-          })
-        );
-      } else if (event.type === "event" || event.type === "engagement") {
-        eventPromises.push(
-          db.insert(analyticsEvents).values({
-            userId,
-            eventType: event.eventType || event.type,
-            eventData: {
+    for (const event of validEvents) {
+      try {
+        if (event.type === "pageView") {
+          pageViewPromises.push(
+            db.insert(pageVisits).values({
+              userId,
               page: event.page,
-              timeOnPage: event.timeOnPage,
-              maxScrollDepth: event.maxScrollDepth,
-              ...event.eventData,
-            },
-            createdAt: new Date(event.timestamp),
-          })
-        );
+              sessionId: event.sessionId,
+              userAgent: event.userAgent || req.headers["user-agent"] || null,
+              ipAddress: req.ip || null,
+              referrer: event.referrer || req.headers.referer || null,
+              visitedAt: new Date(event.timestamp),
+            }).catch(err => {
+              console.error("Failed to insert page visit:", err);
+              return null; // Continue on error
+            })
+          );
+        } else if (event.type === "event" || event.type === "engagement") {
+          eventPromises.push(
+            db.insert(analyticsEvents).values({
+              userId,
+              eventType: event.eventType || event.type,
+              eventData: {
+                page: event.page,
+                timeOnPage: event.timeOnPage,
+                maxScrollDepth: event.maxScrollDepth,
+                ...event.eventData,
+              },
+              createdAt: new Date(event.timestamp),
+            }).catch(err => {
+              console.error("Failed to insert analytics event:", err);
+              return null; // Continue on error
+            })
+          );
+        }
+      } catch (err) {
+        console.error("Error processing event:", err);
+        // Continue with other events
       }
     }
 
-    // ✅ Execute all inserts in parallel
+    // Execute all inserts
     await Promise.all([...pageViewPromises, ...eventPromises]);
 
-    res.json({ success: true, tracked: events.length });
+    res.json({ success: true, tracked: validEvents.length });
   } catch (error: any) {
     console.error("Batch analytics error:", error);
-    res
-      .status(500)
-      .json({ success: false, error: "Analytics tracking failed" });
+    
+    // ✅ Don't send 500 - client should retry
+    res.json({ 
+      success: false, 
+      error: "Analytics tracking failed",
+      tracked: 0 
+    });
   }
 };
 

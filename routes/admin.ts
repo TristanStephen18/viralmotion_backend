@@ -44,6 +44,14 @@ import {
   validateCreateLifetimeAccount,
   validateUserListQuery,
 } from "../middleware/adminValidator.ts";
+import {
+  createCoupon,
+  getCoupons,
+  getCouponDetails,
+  updateCoupon,
+  deactivateCoupon,
+  deleteCoupon,
+} from "../controllers/admin/couponController.ts";
 import rateLimit from "express-rate-limit";
 
 
@@ -218,6 +226,47 @@ router.post(
   adminOperationsRateLimiter,
   requireReAuth(),
   updateAdminProfile
+);
+
+// ===== COUPON MANAGEMENT ROUTES =====
+router.post(
+  "/coupons",
+  adminCriticalRateLimiter,
+  requireReAuth(),  // ✅ FIXED: Added ()
+  createCoupon
+);
+
+router.get(
+  "/coupons",
+  adminDataAccessRateLimiter,
+  getCoupons
+);
+
+router.get(
+  "/coupons/:couponId",
+  adminDataAccessRateLimiter,
+  getCouponDetails
+);
+
+router.put(
+  "/coupons/:couponId",
+  adminCriticalRateLimiter,
+  requireReAuth(),  // ✅ FIXED: Added ()
+  updateCoupon
+);
+
+router.post(
+  "/coupons/:couponId/deactivate",
+  adminCriticalRateLimiter,
+  requireReAuth(),  // ✅ FIXED: Added ()
+  deactivateCoupon
+);
+
+router.delete(
+  "/coupons/:couponId",
+  adminCriticalRateLimiter,
+  requireReAuth(),  // ✅ FIXED: Added ()
+  deleteCoupon
 );
 
 export default router;

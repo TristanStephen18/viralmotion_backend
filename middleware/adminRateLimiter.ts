@@ -1,6 +1,12 @@
 import rateLimit from "express-rate-limit";
 import slowDown from "express-slow-down";
 
+// ============================================================
+// ✅ PRODUCTION ONLY - All admin rate limiters disabled in development
+// ============================================================
+
+const isProduction = process.env.NODE_ENV === 'production';
+
 const rateLimitConfig = {
   standardHeaders: true,
   legacyHeaders: false,
@@ -9,79 +15,83 @@ const rateLimitConfig = {
   },
 };
 
-// ✅ CRITICAL: Admin login rate limiter (VERY STRICT - no roles to protect)
-export const adminLoginRateLimiter = rateLimit({
-  ...rateLimitConfig,
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 3, // Only 3 attempts per 15 minutes per IP+email
-  message: { 
-    success: false,
-    error: "Too many admin login attempts. Account locked for 15 minutes for security." 
-  },
-  skipSuccessfulRequests: true,
-  // ✅ FIXED: Simple key without IP manipulation
-  keyGenerator: (req) => {
-    const email = req.body?.email || 'unknown';
-    // Don't include IP in key - let express-rate-limit handle IP automatically
-    return `admin-login:${email}`;
-  },
-});
+// Admin login rate limiter
+export const adminLoginRateLimiter = isProduction
+  ? rateLimit({
+      ...rateLimitConfig,
+      windowMs: 15 * 60 * 1000,
+      max: 3,
+      message: { 
+        success: false,
+        error: "Too many admin login attempts. Please try again in 15 minutes." 
+      },
+      skipSuccessfulRequests: true,
+      keyGenerator: (req) => {
+        const email = req.body?.email || 'unknown';
+        return `admin-login:${email}`;
+      },
+    })
+  : (req: any, res: any, next: any) => next();
 
-// ✅ General admin operations (very strict since all admins are superadmins)
-export const adminOperationsRateLimiter = rateLimit({
-  ...rateLimitConfig,
-  windowMs: 60 * 1000, // 1 minute
-  max: 20, // Max 20 operations per minute
-  message: { 
-    success: false,
-    error: "Too many admin operations. Please slow down." 
-  },
-  // ✅ FIXED: Use admin ID from request, not IP
-  keyGenerator: (req) => {
-    const adminId = (req as any).admin?.adminId || 'unknown';
-    return `admin-ops:${adminId}`;
-  },
-});
+// General admin operations
+export const adminOperationsRateLimiter = isProduction
+  ? rateLimit({
+      ...rateLimitConfig,
+      windowMs: 60 * 1000,
+      max: 20,
+      message: { 
+        success: false,
+        error: "Too many admin operations" 
+      },
+      keyGenerator: (req) => {
+        const adminId = (req as any).admin?.adminId || 'unknown';
+        return `admin-ops:${adminId}`;
+      },
+    })
+  : (req: any, res: any, next: any) => next();
 
-// ✅ CRITICAL operations (delete, grant/revoke lifetime) - VERY STRICT
-export const adminCriticalRateLimiter = rateLimit({
-  ...rateLimitConfig,
-  windowMs: 60 * 60 * 1000, // 1 hour
-  max: 5, // Only 5 critical operations per hour
-  message: { 
-    success: false,
-    error: "Critical operation limit reached. Maximum 5 critical operations per hour for security." 
-  },
-  // ✅ FIXED: Use admin ID from request, not IP
-  keyGenerator: (req) => {
-    const adminId = (req as any).admin?.adminId || 'unknown';
-    return `admin-critical:${adminId}`;
-  },
-});
+// Critical operations
+export const adminCriticalRateLimiter = isProduction
+  ? rateLimit({
+      ...rateLimitConfig,
+      windowMs: 60 * 60 * 1000,
+      max: 5,
+      message: { 
+        success: false,
+        error: "Critical operation limit reached" 
+      },
+      keyGenerator: (req) => {
+        const adminId = (req as any).admin?.adminId || 'unknown';
+        return `admin-critical:${adminId}`;
+      },
+    })
+  : (req: any, res: any, next: any) => next();
 
-// ✅ User data access rate limiter (prevent mass data scraping)
-export const adminDataAccessRateLimiter = rateLimit({
-  ...rateLimitConfig,
-  windowMs: 60 * 1000, // 1 minute
-  max: 10, // Max 10 user detail views per minute
-  message: { 
-    success: false,
-    error: "Too many user data requests. Please slow down." 
-  },
-  // ✅ FIXED: Use admin ID from request, not IP
-  keyGenerator: (req) => {
-    const adminId = (req as any).admin?.adminId || 'unknown';
-    return `admin-data:${adminId}`;
-  },
-});
+// Data access
+export const adminDataAccessRateLimiter = isProduction
+  ? rateLimit({
+      ...rateLimitConfig,
+      windowMs: 60 * 1000,
+      max: 10,
+      message: { 
+        success: false,
+        error: "Too many data requests" 
+      },
+      keyGenerator: (req) => {
+        const adminId = (req as any).admin?.adminId || 'unknown';
+        return `admin-data:${adminId}`;
+      },
+    })
+  : (req: any, res: any, next: any) => next();
 
-// ✅ Speed limiter for all admin routes
-export const adminSpeedLimiter = slowDown({
-  windowMs: 15 * 60 * 1000,
-  delayAfter: 5, // Start slowing down after just 5 requests
-  delayMs: (hits) => hits * 300, // Add 300ms delay per request
-  validate: {
-    trustProxy: false,
-  },
-  // ✅ No custom keyGenerator needed - uses default IP-based limiting
-});
+// Speed limiter
+export const adminSpeedLimiter = isProduction
+  ? slowDown({
+      windowMs: 15 * 60 * 1000,
+      delayAfter: 5,
+      delayMs: (hits) => hits * 300,
+      validate: {
+        trustProxy: false,
+      },
+    })
+  : (req: any, res: any, next: any) => next();
