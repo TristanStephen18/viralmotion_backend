@@ -8,6 +8,7 @@ import {
   uuid,
   boolean,
   index,
+  json,
   varchar,
 } from "drizzle-orm/pg-core";
 
@@ -443,3 +444,23 @@ export const couponRedemptions = pgTable(
     ),
   })
 );
+
+export const notifications = pgTable("notifications", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  type: varchar("type", { length: 50 }).notNull(),
+  title: varchar("title", { length: 200 }).notNull(),
+  message: text("message").notNull(),
+  metadata: json("metadata"),
+  isRead: boolean("is_read").default(false).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const notificationHistory = pgTable("notification_history", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  subscriptionId: uuid("subscription_id").references(() => subscriptions.id, { onDelete: "cascade" }),
+  notificationType: varchar("notification_type", { length: 100 }).notNull(),
+  sentAt: timestamp("sent_at").defaultNow().notNull(),
+  metadata: json("metadata"),
+});
