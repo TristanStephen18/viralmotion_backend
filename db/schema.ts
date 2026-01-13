@@ -396,3 +396,50 @@ export const usageTracking = pgTable(
     userIdIdx: index("usage_tracking_user_id_idx").on(table.userId),
   })
 );
+
+
+export const coupons = pgTable(
+  "coupons",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    code: varchar("code", { length: 50 }).notNull().unique(),
+    description: text("description"), // What this coupon is for
+    assignedTo: text("assigned_to"), // Name/email of affiliate/person
+    createdBy: integer("created_by")
+      .references(() => adminUsers.id)
+      .notNull(),
+    isActive: boolean("is_active").default(true).notNull(),
+    expiryDate: timestamp("expiry_date"), // NULL = never expires
+    maxUses: integer("max_uses").default(1).notNull(), // How many times can be used
+    currentUses: integer("current_uses").default(0).notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    codeIdx: index("coupons_code_idx").on(table.code),
+    createdByIdx: index("coupons_created_by_idx").on(table.createdBy),
+    isActiveIdx: index("coupons_is_active_idx").on(table.isActive),
+  })
+);
+
+export const couponRedemptions = pgTable(
+  "coupon_redemptions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    couponId: uuid("coupon_id")
+      .references(() => coupons.id, { onDelete: "cascade" })
+      .notNull(),
+    userId: integer("user_id")
+      .references(() => users.id, { onDelete: "cascade" })
+      .notNull(),
+    redeemedAt: timestamp("redeemed_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    couponIdIdx: index("coupon_redemptions_coupon_id_idx").on(table.couponId),
+    userIdIdx: index("coupon_redemptions_user_id_idx").on(table.userId),
+    uniqueUserCoupon: index("coupon_redemptions_unique_user_coupon_idx").on(
+      table.userId,
+      table.couponId
+    ),
+  })
+);
