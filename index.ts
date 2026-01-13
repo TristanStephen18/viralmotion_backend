@@ -3,6 +3,7 @@ import cors from "cors";
 import cookieParser from "cookie-parser";
 import session from "express-session";
 import passport from "passport";
+import rateLimit from "express-rate-limit";
 
 // Security middleware
 import { generalRateLimiter, speedLimiter } from "./middleware/rateLimiter.ts";
@@ -50,6 +51,9 @@ import usageRoutes from "./routes/usage.ts";
 import pollinationsRoutes from './routes/apis/pollinations.ts';
 import redditPostRoutes from './routes/redditPost.routes.ts';
 import nodemailerRoutes from './routes/apis/nodemailer.ts';
+import notificationRoutes from "./routes/notification.ts";
+import { checkExpiringCoupons } from "./jobs/checkExpiringCoupons.ts";
+
 
 const app = express();
 
@@ -109,9 +113,17 @@ app.post(
 // ⚠️ ALL BODY PARSING COMES AFTER WEBHOOK
 // ============================================================
 
-// Rate limiting
-app.use(generalRateLimiter);
-app.use(speedLimiter);
+// ============================================================
+// ✅ UPDATED: Conditional Rate Limiting (DISABLED in dev)
+// ============================================================
+if (process.env.NODE_ENV === 'production') {
+  console.log('🛡️  Rate limiting ENABLED (production)');
+  app.use(generalRateLimiter);
+  app.use(speedLimiter);
+} else {
+  console.log('🔓 Rate limiting DISABLED (development)');
+  // No rate limiting in development
+}
 
 // Body parser (comes AFTER webhook)
 app.use(express.json({ limit: "10mb" }));
@@ -144,6 +156,30 @@ app.get("/health", (req, res) => {
 });
 
 // ============================================================
+// ✅ NEW: Analytics Rate Limiter (conditional)
+// ============================================================
+const analyticsRateLimiter = process.env.NODE_ENV === 'production'
+  ? rateLimit({
+      windowMs: 60 * 1000, // 1 minute
+      max: 100, // 100 requests per minute in production
+      skipSuccessfulRequests: false,
+      skipFailedRequests: true,
+      message: { 
+        success: false, 
+        error: "Analytics rate limit exceeded. Please try again in 1 minute." 
+      },
+      standardHeaders: true,
+      legacyHeaders: false,
+      validate: {
+        trustProxy: false,
+      },
+    })
+  : (req: any, res: any, next: any) => next(); // ✅ Skip entirely in dev
+
+// Apply analytics rate limiter ONLY to analytics tracking endpoint
+app.use("/admin/analytics/track", analyticsRateLimiter);
+
+// ============================================================
 // Register ALL other routes (AFTER body parsing)
 // ============================================================
 app.use("/api", airoutes);
@@ -174,7 +210,7 @@ app.use("/api/veo3-video-generation", veo3Routes);
 app.use("/api/youtube-v2", youtubeRoutes);
 app.use('/api/tools/save-image', saveImageRoutes);
 app.use("/api/image-generation", imageGenRoutes);
-app.use("/api/subscription", subscriptionRoutes); // ⚠️ This should NOT have webhook route
+app.use("/api/subscription", subscriptionRoutes);
 app.use("/admin", adminRoutes);
 app.use("/api/analytics", analyticsRoutes);
 app.use("/api/prompt-improvement", promptImprovementRoutes);
@@ -184,9 +220,35 @@ app.use("/cloudinary", ssToCloudinaryRoutes);
 app.use("/api/bunny", bunnyRoutes);
 app.use("/api/pollinations", pollinationsRoutes);
 app.use('/api/reddit-posts', redditPostRoutes);
-
-//new mailing ruotes created by the great Tristan Rasco
 app.use('/api/mail', nodemailerRoutes);
+app.use("/api/notifications", notificationRoutes);
+
+// ✅ Schedule expiry check daily at 9 AM
+const scheduleExpiryCheck = () => {
+  const now = new Date();
+  const scheduledTime = new Date();
+  scheduledTime.setHours(9, 0, 0, 0);
+
+  if (now > scheduledTime) {
+    scheduledTime.setDate(scheduledTime.getDate() + 1);
+  }
+
+  const timeUntilCheck = scheduledTime.getTime() - now.getTime();
+
+  setTimeout(() => {
+    checkExpiringCoupons();
+    setInterval(checkExpiringCoupons, 24 * 60 * 60 * 1000);
+  }, timeUntilCheck);
+
+  console.log(`⏰ Expiry check scheduled for ${scheduledTime.toLocaleString()}`);
+};
+
+scheduleExpiryCheck();
+
+// ✅ Run on startup in development
+if (process.env.NODE_ENV !== 'production') {
+  setTimeout(() => checkExpiringCoupons(), 5000);
+}
 
 // 404 handler
 app.use((req, res) => {
@@ -238,7 +300,15 @@ app.listen(PORT, "0.0.0.0", () => {
   console.log(`✅ Server running on http://0.0.0.0:${PORT}`);
   console.log(`🔒 Security features enabled`);
   console.log(`🌐 CORS origins: ${allowedOrigins.join(", ")}`);
-  console.log(`🛡️  Rate limiting: Active`);
+  
+  if (process.env.NODE_ENV === 'production') {
+    console.log(`🛡️  Rate limiting: ENABLED`);
+    console.log(`📈 Analytics rate limit: 100 requests/minute`);
+  } else {
+    console.log(`🔓 Rate limiting: DISABLED (development)`);
+    console.log(`📈 Analytics rate limit: DISABLED (development)`);
+  }
+  
   console.log(`🍪 Cookie support: Active`);
   console.log(`📊 Environment: ${process.env.NODE_ENV || "development"}`);
   console.log(`🪝 Webhook endpoint: POST /api/subscription/webhook`);
