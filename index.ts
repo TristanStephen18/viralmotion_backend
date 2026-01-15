@@ -224,6 +224,7 @@ app.use('/api/mail', nodemailerRoutes);
 app.use("/api/notifications", notificationRoutes);
 
 // ✅ Schedule expiry check daily at 9 AM
+// ✅ Schedule expiry check daily at 9 AM
 const scheduleExpiryCheck = () => {
   const now = new Date();
   const scheduledTime = new Date();
@@ -295,9 +296,17 @@ process.on("SIGTERM", () => {
 
 const PORT = parseInt(process.env.PORT || "3000", 10);
 
-app.listen(PORT, "0.0.0.0", () => {
+// ✅ CREATE HTTP SERVER AND INITIALIZE SOCKET.IO
+import { createServer } from 'http';
+import { initializeSocketIO } from './services/socketService.ts';
+
+const httpServer = createServer(app);
+initializeSocketIO(httpServer);
+
+httpServer.listen(PORT, "0.0.0.0", () => {
   console.log("=================================");
   console.log(`✅ Server running on http://0.0.0.0:${PORT}`);
+  console.log(`🔌 WebSocket server initialized`);
   console.log(`🔒 Security features enabled`);
   console.log(`🌐 CORS origins: ${allowedOrigins.join(", ")}`);
   
