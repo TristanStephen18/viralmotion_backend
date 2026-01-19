@@ -1,6 +1,7 @@
 import { db } from "../db/client.ts";
 import { notifications, notificationHistory } from "../db/schema.ts";
 import { sql } from "drizzle-orm";
+import { emitNotificationToUser } from './socketService.ts';
 
 interface CreateNotificationParams {
   userId: number;
@@ -26,6 +27,7 @@ export const createNotification = async (params: CreateNotificationParams) => {
       })
       .returning();
 
+    emitNotificationToUser(userId, notification);
     console.log(`✅ Notification created for user ${userId}: ${title}`);
     return notification;
   } catch (error) {
@@ -34,10 +36,9 @@ export const createNotification = async (params: CreateNotificationParams) => {
   }
 };
 
-// ✅ UPDATED: subscriptionId is string (UUID)
 export const trackNotificationSent = async (
   userId: number,
-  subscriptionId: string, // ✅ UUID as string
+  subscriptionId: string,
   notificationType: string,
   metadata?: any
 ) => {
@@ -54,10 +55,9 @@ export const trackNotificationSent = async (
   }
 };
 
-// ✅ UPDATED: subscriptionId is string (UUID)
 export const hasNotificationBeenSent = async (
   userId: number,
-  subscriptionId: string, // ✅ UUID as string
+  subscriptionId: string,
   notificationType: string
 ): Promise<boolean> => {
   try {
@@ -72,6 +72,6 @@ export const hasNotificationBeenSent = async (
     return history.length > 0;
   } catch (error) {
     console.error("❌ Error checking notification history:", error);
-    return false; // ✅ Fail gracefully
+    return false;
   }
 };

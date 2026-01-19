@@ -4,10 +4,10 @@ import { notifications } from "../db/schema.ts";
 import { eq, and, desc } from "drizzle-orm";
 import { requireAuth } from "../utils/authmiddleware.ts";
 import type { AuthRequest } from "../utils/authmiddleware.ts";
+import { emitNotificationUpdate } from '../services/socketService.ts';
 
 const router = Router();
 
-// Get user notifications
 router.get("/", requireAuth, async (req: AuthRequest, res) => {
   try {
     const userId = req.user?.userId;
@@ -36,49 +36,44 @@ router.get("/", requireAuth, async (req: AuthRequest, res) => {
   }
 });
 
-// Mark notification as read (Enhanced)
-router.put(
-  "/:notificationId/read",
-  requireAuth,
-  async (req: AuthRequest, res) => {
-    try {
-      const userId = req.user?.userId;
-      const notificationId = parseInt(req.params.notificationId);
+router.put("/:notificationId/read", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const userId = req.user?.userId;
+    const notificationId = parseInt(req.params.notificationId);
 
-      if (!userId) {
-        return res.status(401).json({ success: false, error: "Unauthorized" });
-      }
-
-      await db
-        .update(notifications)
-        .set({ isRead: true })
-        .where(
-          and(
-            eq(notifications.id, notificationId),
-            eq(notifications.userId, userId)
-          )
-        );
-
-      // ✅ OPTIONAL: Return new unread count
-      const unreadNotifications = await db
-        .select()
-        .from(notifications)
-        .where(
-          and(eq(notifications.userId, userId), eq(notifications.isRead, false))
-        );
-
-      res.json({
-        success: true,
-        unreadCount: unreadNotifications.length, // ✅ Helpful for frontend
-      });
-    } catch (error: any) {
-      console.error("Mark notification read error:", error);
-      res.status(500).json({ success: false, error: error.message });
+    if (!userId) {
+      return res.status(401).json({ success: false, error: "Unauthorized" });
     }
-  }
-);
 
-// Mark all as read (Enhanced)
+    await db
+      .update(notifications)
+      .set({ isRead: true })
+      .where(
+        and(
+          eq(notifications.id, notificationId),
+          eq(notifications.userId, userId)
+        )
+      );
+
+    emitNotificationUpdate(userId, 'notification-read', notificationId);
+
+    const unreadNotifications = await db
+      .select()
+      .from(notifications)
+      .where(
+        and(eq(notifications.userId, userId), eq(notifications.isRead, false))
+      );
+
+    res.json({
+      success: true,
+      unreadCount: unreadNotifications.length,
+    });
+  } catch (error: any) {
+    console.error("Mark notification read error:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 router.put("/read-all", requireAuth, async (req: AuthRequest, res) => {
   try {
     const userId = req.user?.userId;
@@ -92,9 +87,11 @@ router.put("/read-all", requireAuth, async (req: AuthRequest, res) => {
       .set({ isRead: true })
       .where(eq(notifications.userId, userId));
 
+    emitNotificationUpdate(userId, 'notifications-all-read', {});
+
     res.json({
       success: true,
-      unreadCount: 0, // ✅ Always 0 after marking all as read
+      unreadCount: 0,
     });
   } catch (error: any) {
     console.error("Mark all read error:", error);
@@ -102,55 +99,56 @@ router.put("/read-all", requireAuth, async (req: AuthRequest, res) => {
   }
 });
 
-// Mark all notifications as read
-router.put("/read-all", requireAuth, async (req: AuthRequest, res) => {
+router.delete("/:notificationId", requireAuth, async (req: AuthRequest, res) => {
   try {
     const userId = req.user?.userId;
+    const notificationId = parseInt(req.params.notificationId);
 
     if (!userId) {
       return res.status(401).json({ success: false, error: "Unauthorized" });
     }
 
     await db
-      .update(notifications)
-      .set({ isRead: true })
-      .where(eq(notifications.userId, userId));
+      .delete(notifications)
+      .where(
+        and(
+          eq(notifications.id, notificationId),
+          eq(notifications.userId, userId)
+        )
+      );
+
+    emitNotificationUpdate(userId, 'notification-deleted', notificationId);
 
     res.json({ success: true });
   } catch (error: any) {
-    console.error("Mark all read error:", error);
+    console.error("Delete notification error:", error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
 
-// Delete notification
-router.delete(
-  "/:notificationId",
-  requireAuth,
-  async (req: AuthRequest, res) => {
-    try {
-      const userId = req.user?.userId;
-      const notificationId = parseInt(req.params.notificationId);
+// // ✅ TEST ENDPOINT
+// router.post("/test", requireAuth, async (req: AuthRequest, res) => {
+//   try {
+//     const userId = req.user?.userId;
+//     if (!userId) {
+//       return res.status(401).json({ success: false, error: "Unauthorized" });
+//     }
 
-      if (!userId) {
-        return res.status(401).json({ success: false, error: "Unauthorized" });
-      }
+//     const { createNotification } = await import("../services/notificationService.ts");
+    
+//     await createNotification({
+//       userId,
+//       type: "test",
+//       title: "🧪 Test Notification",
+//       message: "This is a real-time test notification sent at " + new Date().toLocaleTimeString(),
+//       metadata: { test: true, timestamp: Date.now() }
+//     });
 
-      await db
-        .delete(notifications)
-        .where(
-          and(
-            eq(notifications.id, notificationId),
-            eq(notifications.userId, userId)
-          )
-        );
-
-      res.json({ success: true });
-    } catch (error: any) {
-      console.error("Delete notification error:", error);
-      res.status(500).json({ success: false, error: error.message });
-    }
-  }
-);
+//     res.json({ success: true, message: "Test notification sent!" });
+//   } catch (error: any) {
+//     console.error("Test notification error:", error);
+//     res.status(500).json({ success: false, error: error.message });
+//   }
+// });
 
 export default router;
