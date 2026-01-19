@@ -268,6 +268,7 @@ export const subscriptions = pgTable(
     metadata: text("metadata"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
+    originalSubscriptionData: text("original_subscription_data"),
   },
   (table) => {
     return {
