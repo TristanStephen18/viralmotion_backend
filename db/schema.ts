@@ -410,6 +410,7 @@ export const coupons = pgTable(
       .notNull(),
     isActive: boolean("is_active").default(true).notNull(),
     expiryDate: timestamp("expiry_date"), // NULL = never expires
+    durationDays: integer("duration_days").default(30).notNull(), // ✅ NEW: How long user gets access
     maxUses: integer("max_uses").default(1).notNull(), // How many times can be used
     currentUses: integer("current_uses").default(0).notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
