@@ -65,19 +65,7 @@ router.post("/auth/login", adminLoginRateLimiter, adminLogin);
 // ✅ Create first admin (one-time setup)
 router.post("/auth/setup", createFirstAdmin);
 
-// ✅ NEW: Public analytics tracking endpoint (rate limited)
-const analyticsRateLimiter = rateLimit({
-  windowMs: 60 * 1000, // 1 minute
-  max: 30, // Max 30 requests per minute per IP
-  message: { success: false, error: "Too many analytics requests" },
-  standardHeaders: true,
-  legacyHeaders: false,
-  validate: {
-    trustProxy: false,
-  },
-});
-
-router.post("/analytics/track", analyticsRateLimiter, trackAnalyticsBatch);
+router.post("/analytics/track", trackAnalyticsBatch);
 
 // ========== PROTECTED ROUTES (REQUIRE AUTH) ==========
 

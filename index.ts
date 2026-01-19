@@ -9,7 +9,7 @@ import rateLimit from "express-rate-limit";
 import { generalRateLimiter, speedLimiter } from "./middleware/rateLimiter.ts";
 import { securityHeaders } from "./middleware/securityHeaders.ts";
 import { cleanupExpiredTokens } from "./utils/tokens.ts";
-import proxyRoutes from './routes/proxy.ts';
+import proxyRoutes from "./routes/proxy.ts";
 
 // Import routes
 import airoutes from "./routes/apis/gemini.ts";
@@ -46,22 +46,22 @@ import { handleStripeWebhook } from "./controllers/subscription/webhookControlle
 import adminRoutes from "./routes/admin.ts";
 import analyticsRoutes from "./routes/analytics.ts";
 import promptImprovementRoutes from "./routes/apis/promptImprovement.ts";
-import bunnyRoutes from './routes/apis/bunny.ts';
+import bunnyRoutes from "./routes/apis/bunny.ts";
 import usageRoutes from "./routes/usage.ts";
-import pollinationsRoutes from './routes/apis/pollinations.ts';
-import redditPostRoutes from './routes/redditPost.routes.ts';
-import nodemailerRoutes from './routes/apis/nodemailer.ts';
+import pollinationsRoutes from "./routes/apis/pollinations.ts";
+import redditPostRoutes from "./routes/redditPost.routes.ts";
+import nodemailerRoutes from "./routes/apis/nodemailer.ts";
 import notificationRoutes from "./routes/notification.ts";
 import { checkExpiringCoupons } from "./jobs/checkExpiringCoupons.ts";
-
+import { expireCoupons } from "./jobs/expireCoupons.ts";
 
 const app = express();
 
 // Trust proxy
-if (process.env.NODE_ENV === 'production') {
-  app.set('trust proxy', 1); 
+if (process.env.NODE_ENV === "production") {
+  app.set("trust proxy", 1);
 } else {
-  app.set('trust proxy', false);
+  app.set("trust proxy", false);
 }
 
 // ============================================================
@@ -95,18 +95,23 @@ app.use(
     },
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization", "X-2FA-Verified", "X-Reauth-Token"],
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "X-2FA-Verified",
+      "X-Reauth-Token",
+    ],
     exposedHeaders: ["Set-Cookie"],
-  })
+  }),
 );
 
 // ============================================================
 // ✅ CRITICAL: WEBHOOK ROUTE MUST BE FIRST (before ANY body parsing)
 // ============================================================
 app.post(
-  '/api/subscription/webhook',
-  express.raw({ type: 'application/json' }),
-  handleStripeWebhook
+  "/api/subscription/webhook",
+  express.raw({ type: "application/json" }),
+  handleStripeWebhook,
 );
 
 // ============================================================
@@ -116,12 +121,12 @@ app.post(
 // ============================================================
 // ✅ UPDATED: Conditional Rate Limiting (DISABLED in dev)
 // ============================================================
-if (process.env.NODE_ENV === 'production') {
-  console.log('🛡️  Rate limiting ENABLED (production)');
+if (process.env.NODE_ENV === "production") {
+  console.log("🛡️  Rate limiting ENABLED (production)");
   app.use(generalRateLimiter);
   app.use(speedLimiter);
 } else {
-  console.log('🔓 Rate limiting DISABLED (development)');
+  console.log("🔓 Rate limiting DISABLED (development)");
   // No rate limiting in development
 }
 
@@ -138,9 +143,9 @@ app.use(
     cookie: {
       secure: process.env.NODE_ENV === "production",
       httpOnly: true,
-      maxAge: 24 * 60 * 60 * 1000, 
+      maxAge: 24 * 60 * 60 * 1000,
     },
-  })
+  }),
 );
 
 app.use(passport.initialize());
@@ -148,40 +153,43 @@ app.use(passport.session());
 
 // Health check
 app.get("/health", (req, res) => {
-  res.json({ 
-    status: "healthy", 
+  res.json({
+    status: "healthy",
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
   });
 });
 
-// ============================================================
-// ✅ NEW: Analytics Rate Limiter (conditional)
-// ============================================================
-const analyticsRateLimiter = process.env.NODE_ENV === 'production'
-  ? rateLimit({
-      windowMs: 60 * 1000, // 1 minute
-      max: 100, // 100 requests per minute in production
-      skipSuccessfulRequests: false,
-      skipFailedRequests: true,
-      message: { 
-        success: false, 
-        error: "Analytics rate limit exceeded. Please try again in 1 minute." 
-      },
-      standardHeaders: true,
-      legacyHeaders: false,
-      validate: {
-        trustProxy: false,
-      },
-    })
-  : (req: any, res: any, next: any) => next(); // ✅ Skip entirely in dev
+// Analytics Rate Limiter (conditional)
+
+const analyticsRateLimiter =
+  process.env.NODE_ENV === "production"
+    ? rateLimit({
+        windowMs: 60 * 1000, // 1 minute
+        max: 200, // ✅ INCREASED: 200 requests per minute
+        skipSuccessfulRequests: false,
+        skipFailedRequests: true,
+        message: {
+          success: false,
+          error: "Analytics rate limit exceeded. Please try again in 1 minute.",
+        },
+        standardHeaders: true,
+        legacyHeaders: false,
+        // ✅ IMPORTANT: Use session-based rate limiting instead of IP
+        keyGenerator: (req) => {
+          const authHeader = req.headers.authorization;
+          if (authHeader?.startsWith("Bearer ")) {
+            const token = authHeader.substring(7);
+            return `analytics_${token.substring(0, 20)}`; // Use token prefix as key
+          }
+          return req.ip || "anonymous"; // Fallback to IP
+        },
+      })
+    : (req: any, res: any, next: any) => next();
 
 // Apply analytics rate limiter ONLY to analytics tracking endpoint
 app.use("/admin/analytics/track", analyticsRateLimiter);
 
-// ============================================================
-// Register ALL other routes (AFTER body parsing)
-// ============================================================
 app.use("/api", airoutes);
 app.use("/generatevideo", renderingroutes);
 app.use("/uploadhandler", uploadroutes);
@@ -208,27 +216,26 @@ app.use("/api/tools/audio", audioRoutes);
 app.use("/api/tools/speech-enhancement", enhanceSpeechRoutes);
 app.use("/api/veo3-video-generation", veo3Routes);
 app.use("/api/youtube-v2", youtubeRoutes);
-app.use('/api/tools/save-image', saveImageRoutes);
+app.use("/api/tools/save-image", saveImageRoutes);
 app.use("/api/image-generation", imageGenRoutes);
 app.use("/api/subscription", subscriptionRoutes);
 app.use("/admin", adminRoutes);
 app.use("/api/analytics", analyticsRoutes);
 app.use("/api/prompt-improvement", promptImprovementRoutes);
-app.use('/api/proxy', proxyRoutes);
+app.use("/api/proxy", proxyRoutes);
 app.use("/api/usage", usageRoutes);
 app.use("/cloudinary", ssToCloudinaryRoutes);
 app.use("/api/bunny", bunnyRoutes);
 app.use("/api/pollinations", pollinationsRoutes);
-app.use('/api/reddit-posts', redditPostRoutes);
-app.use('/api/mail', nodemailerRoutes);
+app.use("/api/reddit-posts", redditPostRoutes);
+app.use("/api/mail", nodemailerRoutes);
 app.use("/api/notifications", notificationRoutes);
 
-// ✅ Schedule expiry check daily at 9 AM
-// ✅ Schedule expiry check daily at 9 AM
-const scheduleExpiryCheck = () => {
+// ✅ Schedule jobs daily at 9 AM
+const scheduleDailyJobs = () => {
   const now = new Date();
   const scheduledTime = new Date();
-  scheduledTime.setHours(9, 0, 0, 0);
+  scheduledTime.setUTCHours(9, 0, 0, 0);
 
   if (now > scheduledTime) {
     scheduledTime.setDate(scheduledTime.getDate() + 1);
@@ -237,48 +244,100 @@ const scheduleExpiryCheck = () => {
   const timeUntilCheck = scheduledTime.getTime() - now.getTime();
 
   setTimeout(() => {
-    checkExpiringCoupons();
-    setInterval(checkExpiringCoupons, 24 * 60 * 60 * 1000);
+    console.log("🔄 Running daily coupon jobs...");
+
+    checkExpiringCoupons()
+      .catch((err) => {
+        console.error("❌ CRITICAL: checkExpiringCoupons failed:", err);
+      })
+      .finally(() => {
+        console.log("✅ checkExpiringCoupons completed"); // ✅ ADD THIS
+      });
+
+    expireCoupons()
+      .catch((err) => {
+        console.error("❌ CRITICAL: expireCoupons failed:", err);
+      })
+      .finally(() => {
+        console.log("✅ expireCoupons completed"); // ✅ ADD THIS
+      });
+
+    setInterval(
+      () => {
+        console.log("🔄 Running daily coupon jobs...");
+
+        checkExpiringCoupons()
+          .catch((err) => {
+            console.error("❌ CRITICAL: checkExpiringCoupons failed:", err);
+          })
+          .finally(() => {
+            console.log("✅ checkExpiringCoupons completed");
+          });
+
+        expireCoupons()
+          .catch((err) => {
+            console.error("❌ CRITICAL: expireCoupons failed:", err);
+          })
+          .finally(() => {
+            console.log("✅ expireCoupons completed");
+          });
+      },
+      24 * 60 * 60 * 1000,
+    );
   }, timeUntilCheck);
 
-  console.log(`⏰ Expiry check scheduled for ${scheduledTime.toLocaleString()}`);
+  console.log(`⏰ Daily jobs scheduled for ${scheduledTime.toLocaleString()}`);
 };
 
-scheduleExpiryCheck();
+scheduleDailyJobs();
 
 // ✅ Run on startup in development
-if (process.env.NODE_ENV !== 'production') {
-  setTimeout(() => checkExpiringCoupons(), 5000);
+if (process.env.NODE_ENV !== "production") {
+  setTimeout(() => {
+    checkExpiringCoupons();
+    expireCoupons();
+  }, 5000);
 }
 
 // 404 handler
 app.use((req, res) => {
-  res.status(404).json({ 
+  res.status(404).json({
     error: "Route not found",
     path: req.path,
   });
 });
 
 // Error handler
-app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
-  console.error("❌ Global error:", err);
-  
-  const message = process.env.NODE_ENV === "production" 
-    ? "Internal server error" 
-    : err.message;
+app.use(
+  (
+    err: any,
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction,
+  ) => {
+    console.error("❌ Global error:", err);
 
-  res.status(err.status || 500).json({
-    error: message,
-    ...(process.env.NODE_ENV !== "production" && { stack: err.stack }),
-  });
-});
+    const message =
+      process.env.NODE_ENV === "production"
+        ? "Internal server error"
+        : err.message;
+
+    res.status(err.status || 500).json({
+      error: message,
+      ...(process.env.NODE_ENV !== "production" && { stack: err.stack }),
+    });
+  },
+);
 
 // Cleanup expired tokens every hour
-setInterval(() => {
-  cleanupExpiredTokens()
-    .then(() => console.log("✅ Cleaned up expired tokens"))
-    .catch((err) => console.error("❌ Token cleanup error:", err));
-}, 60 * 60 * 1000);
+setInterval(
+  () => {
+    cleanupExpiredTokens()
+      .then(() => console.log("✅ Cleaned up expired tokens"))
+      .catch((err) => console.error("❌ Token cleanup error:", err));
+  },
+  60 * 60 * 1000,
+);
 
 // Cleanup on server shutdown
 process.on("SIGTERM", () => {
@@ -297,8 +356,8 @@ process.on("SIGTERM", () => {
 const PORT = parseInt(process.env.PORT || "3000", 10);
 
 // ✅ CREATE HTTP SERVER AND INITIALIZE SOCKET.IO
-import { createServer } from 'http';
-import { initializeSocketIO } from './services/socketService.ts';
+import { createServer } from "http";
+import { initializeSocketIO } from "./services/socketService.ts";
 
 const httpServer = createServer(app);
 initializeSocketIO(httpServer);
@@ -309,15 +368,15 @@ httpServer.listen(PORT, "0.0.0.0", () => {
   console.log(`🔌 WebSocket server initialized`);
   console.log(`🔒 Security features enabled`);
   console.log(`🌐 CORS origins: ${allowedOrigins.join(", ")}`);
-  
-  if (process.env.NODE_ENV === 'production') {
+
+  if (process.env.NODE_ENV === "production") {
     console.log(`🛡️  Rate limiting: ENABLED`);
     console.log(`📈 Analytics rate limit: 100 requests/minute`);
   } else {
     console.log(`🔓 Rate limiting: DISABLED (development)`);
     console.log(`📈 Analytics rate limit: DISABLED (development)`);
   }
-  
+
   console.log(`🍪 Cookie support: Active`);
   console.log(`📊 Environment: ${process.env.NODE_ENV || "development"}`);
   console.log(`🪝 Webhook endpoint: POST /api/subscription/webhook`);

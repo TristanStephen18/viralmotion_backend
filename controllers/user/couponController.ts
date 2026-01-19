@@ -20,7 +20,6 @@ export const redeemCoupon = async (req: AuthRequest, res: Response) => {
 
     const couponCode = code.toUpperCase().trim();
 
-    // Get coupon
     const [coupon] = await db
       .select()
       .from(coupons)
@@ -34,7 +33,6 @@ export const redeemCoupon = async (req: AuthRequest, res: Response) => {
       });
     }
 
-    // Check if active
     if (!coupon.isActive) {
       return res.status(400).json({
         success: false,
@@ -42,7 +40,6 @@ export const redeemCoupon = async (req: AuthRequest, res: Response) => {
       });
     }
 
-    // Check expiry
     if (coupon.expiryDate && new Date(coupon.expiryDate) < new Date()) {
       return res.status(400).json({
         success: false,
@@ -50,7 +47,6 @@ export const redeemCoupon = async (req: AuthRequest, res: Response) => {
       });
     }
 
-    // Check max uses
     if (coupon.currentUses >= coupon.maxUses) {
       return res.status(400).json({
         success: false,
@@ -58,7 +54,6 @@ export const redeemCoupon = async (req: AuthRequest, res: Response) => {
       });
     }
 
-    // Check if user already redeemed
     const [existing] = await db
       .select()
       .from(couponRedemptions)
@@ -77,54 +72,76 @@ export const redeemCoupon = async (req: AuthRequest, res: Response) => {
       });
     }
 
-    // Get user
     const [user] = await db.select().from(users).where(eq(users.id, userId));
 
-    // Check if user already has lifetime access
     const [existingSub] = await db
       .select()
       .from(subscriptions)
       .where(eq(subscriptions.userId, userId))
       .limit(1);
 
-    if (existingSub?.isLifetime && existingSub.status !== 'canceled') {
-      return res.status(400).json({
-        success: false,
-        error: "You already have lifetime access",
-      });
-    }
-
-    // Cancel existing Stripe subscription if any
-    if (existingSub?.stripeSubscriptionId) {
-      try {
-        await stripe.subscriptions.cancel(existingSub.stripeSubscriptionId);
-        console.log(`✅ Canceled Stripe subscription for coupon redemption`);
-      } catch (stripeError: any) {
-        if (stripeError.code !== "resource_missing") {
-          console.error(`❌ Error canceling Stripe subscription:`, stripeError);
-        }
+    // ✅ NEW: Check if user already has an active coupon
+    if (existingSub?.isLifetime && existingSub.status === 'lifetime') {
+      const couponEnd = new Date(existingSub.currentPeriodEnd);
+      if (couponEnd > new Date()) {
+        return res.status(400).json({
+          success: false,
+          error: "You already have an active coupon",
+        });
       }
     }
 
-    // Create/update subscription with coupon access
-    const expiryDate = coupon.expiryDate || new Date("2099-12-31");
+    // ✅ NEW: Store original subscription data (including Stripe subscription)
+    let originalSubscriptionData: string | null = null;
+
+    if (existingSub && !existingSub.isLifetime) {
+      // User has a subscription (free, paid, or expired) - store it
+      originalSubscriptionData = JSON.stringify({
+        stripeSubscriptionId: existingSub.stripeSubscriptionId,
+        stripeCustomerId: existingSub.stripeCustomerId,
+        stripePriceId: existingSub.stripePriceId,
+        status: existingSub.status,
+        plan: existingSub.plan,
+        currentPeriodStart: existingSub.currentPeriodStart,
+        currentPeriodEnd: existingSub.currentPeriodEnd,
+        cancelAtPeriodEnd: existingSub.cancelAtPeriodEnd,
+      });
+
+      console.log(`📦 Storing original ${existingSub.plan} subscription for user ${userId}`);
+      
+      // ✅ CRITICAL: DO NOT cancel Stripe subscription!
+      // The paid subscription continues running in the background
+      // Coupon just gives temporary priority access
+      
+      if (existingSub.stripeSubscriptionId) {
+        console.log(`✅ Keeping Stripe subscription active: ${existingSub.stripeSubscriptionId}`);
+        console.log(`   User keeps their paid subscription while using coupon`);
+      }
+    }
+
+    // Calculate coupon expiry
+    const redemptionDate = new Date();
+    const couponEndDate = new Date(redemptionDate);
+    couponEndDate.setDate(couponEndDate.getDate() + coupon.durationDays);
 
     const subscriptionData = {
       userId,
-      stripeSubscriptionId: null,
-      stripeCustomerId: null,
-      stripePriceId: null,
+      // ✅ KEEP Stripe data intact (don't set to null)
+      stripeSubscriptionId: existingSub?.stripeSubscriptionId || null,
+      stripeCustomerId: existingSub?.stripeCustomerId || null,
+      stripePriceId: existingSub?.stripePriceId || null,
       status: "lifetime" as any,
       plan: "lifetime" as any,
       isLifetime: true,
       isCompanyAccount: false,
       companyName: null,
-      specialNotes: `Coupon: ${coupon.code}${coupon.description ? ` - ${coupon.description}` : ""}`,
+      specialNotes: `Coupon: ${coupon.code}${coupon.description ? ` - ${coupon.description}` : ""} (${coupon.durationDays} days access)`,
       grantedBy: coupon.createdBy,
-      currentPeriodStart: new Date(),
-      currentPeriodEnd: expiryDate,
+      currentPeriodStart: redemptionDate,
+      currentPeriodEnd: couponEndDate, // ✅ This is the coupon expiry
       cancelAtPeriodEnd: false,
       canceledAt: null,
+      originalSubscriptionData, // ✅ Store original subscription
       updatedAt: new Date(),
     };
 
@@ -140,13 +157,11 @@ export const redeemCoupon = async (req: AuthRequest, res: Response) => {
       });
     }
 
-    // Record redemption
     await db.insert(couponRedemptions).values({
       couponId: coupon.id,
       userId,
     });
 
-    // Increment coupon usage
     await db
       .update(coupons)
       .set({
@@ -156,12 +171,16 @@ export const redeemCoupon = async (req: AuthRequest, res: Response) => {
       .where(eq(coupons.id, coupon.id));
 
     console.log(`✅ Coupon ${coupon.code} redeemed by user ${userId} (${user.email})`);
+    console.log(`   Coupon expires: ${couponEndDate.toISOString()}`);
+    if (existingSub?.stripeSubscriptionId) {
+      console.log(`   Stripe subscription kept active: ${existingSub.stripeSubscriptionId}`);
+    }
 
     res.json({
       success: true,
-      message: "Coupon redeemed successfully! You now have unlimited access.",
-      expiresAt: expiryDate,
-      neverExpires: !coupon.expiryDate,
+      message: `Coupon redeemed successfully! You have ${coupon.durationDays} days of access.`,
+      expiresAt: couponEndDate,
+      durationDays: coupon.durationDays,
     });
   } catch (error: any) {
     console.error("❌ Redeem coupon error:", error);

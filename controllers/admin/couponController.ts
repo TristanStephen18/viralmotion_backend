@@ -1,15 +1,14 @@
 import type { Request, Response } from "express";
 import { db } from "../../db/client.ts";
-import { coupons, couponRedemptions, subscriptions, users } from "../../db/schema.ts";
+import { coupons, couponRedemptions, users } from "../../db/schema.ts";
 import { eq, desc, ilike, or, and, gte, lte, count, sql } from "drizzle-orm";
 import { logAdminAction } from "../../utils/auditLogger.ts";
 
-// ✅ CREATE COUPON
 export const createCoupon = async (req: Request, res: Response) => {
   const adminId = (req as any).admin?.adminId;
 
   try {
-    const { code, description, assignedTo, expiryDate, maxUses } = req.body;
+    const { code, description, assignedTo, expiryDate, durationDays, maxUses } = req.body;
 
     if (!code || code.trim().length === 0) {
       return res.status(400).json({
@@ -18,7 +17,13 @@ export const createCoupon = async (req: Request, res: Response) => {
       });
     }
 
-    // Check if code already exists
+    if (!durationDays || durationDays < 1) {
+      return res.status(400).json({
+        success: false,
+        error: "Duration days must be at least 1",
+      });
+    }
+
     const [existing] = await db
       .select()
       .from(coupons)
@@ -40,6 +45,7 @@ export const createCoupon = async (req: Request, res: Response) => {
         assignedTo: assignedTo?.trim() || null,
         createdBy: adminId,
         expiryDate: expiryDate ? new Date(expiryDate) : null,
+        durationDays: parseInt(durationDays),
         maxUses: maxUses || 1,
         currentUses: 0,
         isActive: true,
@@ -50,17 +56,18 @@ export const createCoupon = async (req: Request, res: Response) => {
       adminId,
       action: "CREATE_COUPON",
       targetType: "COUPON",
-      targetId: newCoupon.code as any,
+      // targetId: newCoupon.code as any,
       status: "SUCCESS",
       details: {
         code: newCoupon.code,
         assignedTo: newCoupon.assignedTo,
         expiryDate: newCoupon.expiryDate,
+        durationDays: newCoupon.durationDays,
         maxUses: newCoupon.maxUses,
       },
     });
 
-    console.log(`✅ Coupon created: ${newCoupon.code} by admin ${adminId}`);
+    console.log(`✅ Coupon created: ${newCoupon.code} (${newCoupon.durationDays} days) by admin ${adminId}`);
 
     res.json({
       success: true,
@@ -73,18 +80,16 @@ export const createCoupon = async (req: Request, res: Response) => {
   }
 };
 
-// ✅ GET ALL COUPONS WITH FILTERS
 export const getCoupons = async (req: Request, res: Response) => {
   try {
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 20;
     const search = (req.query.search as string) || "";
-    const status = req.query.status as string; // "active" | "expired" | "exhausted" | "all"
+    const status = req.query.status as string;
     const offset = (page - 1) * limit;
 
     const conditions: any[] = [];
 
-    // Search filter
     if (search) {
       conditions.push(
         or(
@@ -95,7 +100,6 @@ export const getCoupons = async (req: Request, res: Response) => {
       );
     }
 
-    // Status filter
     if (status === "active") {
       conditions.push(
         and(
@@ -144,7 +148,6 @@ export const getCoupons = async (req: Request, res: Response) => {
       .limit(limit)
       .offset(offset);
 
-    // Get total count
     let countQuery = db.select({ count: count() }).from(coupons);
     if (conditions.length > 0) {
       countQuery = countQuery.where(and(...conditions)) as any;
@@ -167,7 +170,6 @@ export const getCoupons = async (req: Request, res: Response) => {
   }
 };
 
-// ✅ GET COUPON DETAILS WITH REDEMPTIONS
 export const getCouponDetails = async (req: Request, res: Response) => {
   try {
     const { couponId } = req.params;
@@ -185,7 +187,6 @@ export const getCouponDetails = async (req: Request, res: Response) => {
       });
     }
 
-    // Get redemptions
     const redemptions = await db
       .select({
         redemption: couponRedemptions,
@@ -211,24 +212,25 @@ export const getCouponDetails = async (req: Request, res: Response) => {
   }
 };
 
-// ✅ UPDATE COUPON
 export const updateCoupon = async (req: Request, res: Response) => {
   const adminId = (req as any).admin?.adminId;
 
   try {
     const { couponId } = req.params;
-    const { description, assignedTo, expiryDate, maxUses, isActive } = req.body;
+    const { description, assignedTo, expiryDate, durationDays, maxUses, isActive } = req.body;
+
+    const updates: any = { updatedAt: new Date() };
+
+    if (description !== undefined) updates.description = description;
+    if (assignedTo !== undefined) updates.assignedTo = assignedTo;
+    if (expiryDate !== undefined) updates.expiryDate = expiryDate ? new Date(expiryDate) : null;
+    if (durationDays !== undefined) updates.durationDays = parseInt(durationDays);
+    if (maxUses !== undefined) updates.maxUses = maxUses;
+    if (isActive !== undefined) updates.isActive = isActive;
 
     const [updated] = await db
       .update(coupons)
-      .set({
-        description: description !== undefined ? description : undefined,
-        assignedTo: assignedTo !== undefined ? assignedTo : undefined,
-        expiryDate: expiryDate !== undefined ? (expiryDate ? new Date(expiryDate) : null) : undefined,
-        maxUses: maxUses !== undefined ? maxUses : undefined,
-        isActive: isActive !== undefined ? isActive : undefined,
-        updatedAt: new Date(),
-      })
+      .set(updates)
       .where(eq(coupons.id, couponId))
       .returning();
 
@@ -243,11 +245,11 @@ export const updateCoupon = async (req: Request, res: Response) => {
       adminId,
       action: "UPDATE_COUPON",
       targetType: "COUPON",
-      targetId: updated.code as any,
+      // targetId: updated.code as any,
       status: "SUCCESS",
       details: {
         code: updated.code,
-        changes: { description, assignedTo, expiryDate, maxUses, isActive },
+        changes: { description, assignedTo, expiryDate, durationDays, maxUses, isActive },
       },
     });
 
@@ -262,7 +264,6 @@ export const updateCoupon = async (req: Request, res: Response) => {
   }
 };
 
-// ✅ DEACTIVATE COUPON
 export const deactivateCoupon = async (req: Request, res: Response) => {
   const adminId = (req as any).admin?.adminId;
 
@@ -289,7 +290,7 @@ export const deactivateCoupon = async (req: Request, res: Response) => {
       adminId,
       action: "DEACTIVATE_COUPON",
       targetType: "COUPON",
-      targetId: deactivated.code as any,
+      // targetId: deactivated.code as any,
       status: "SUCCESS",
       details: { code: deactivated.code },
     });
@@ -304,7 +305,6 @@ export const deactivateCoupon = async (req: Request, res: Response) => {
   }
 };
 
-// ✅ DELETE COUPON
 export const deleteCoupon = async (req: Request, res: Response) => {
   const adminId = (req as any).admin?.adminId;
 
@@ -324,7 +324,6 @@ export const deleteCoupon = async (req: Request, res: Response) => {
       });
     }
 
-    // Check if coupon has been used
     if (coupon.currentUses > 0) {
       return res.status(400).json({
         success: false,
@@ -338,7 +337,7 @@ export const deleteCoupon = async (req: Request, res: Response) => {
       adminId,
       action: "DELETE_COUPON",
       targetType: "COUPON",
-      targetId: coupon.code as any,
+      // targetId: coupon.code as any,
       status: "SUCCESS",
       details: { code: coupon.code },
     });
