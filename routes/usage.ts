@@ -1,6 +1,5 @@
 import { Router } from "express";
-import { requireAuth } from "../utils/authmiddleware.ts"; // ✅ CORRECT IMPORT
-import type { AuthRequest } from "../utils/authmiddleware.ts";
+import { requireAuth } from "../utils/authmiddleware.ts";
 import {
   canCreateVideo,
   incrementVideoCount,

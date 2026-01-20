@@ -6,7 +6,7 @@ import passport from "passport";
 import rateLimit from "express-rate-limit";
 
 // Security middleware
-import { generalRateLimiter, speedLimiter } from "./middleware/rateLimiter.ts";
+import { generalRateLimiter, speedLimiter, usageCheckRateLimiter } from "./middleware/rateLimiter.ts";
 import { securityHeaders } from "./middleware/securityHeaders.ts";
 import { cleanupExpiredTokens } from "./utils/tokens.ts";
 import proxyRoutes from "./routes/proxy.ts";
@@ -127,14 +127,14 @@ if (process.env.NODE_ENV === "production") {
   // ✅ FIXED: Exclude OAuth routes from rate limiting
   app.use((req, res, next) => {
     if (req.path.startsWith('/authenticate')) {
-      return next(); // Skip rate limiting for OAuth
+      return next();
     }
     generalRateLimiter(req, res, next);
   });
   
   app.use((req, res, next) => {
     if (req.path.startsWith('/authenticate')) {
-      return next(); // Skip speed limiting for OAuth
+      return next();
     }
     speedLimiter(req, res, next);
   });
@@ -198,6 +198,8 @@ const analyticsRateLimiter =
         },
       })
     : (req: any, res: any, next: any) => next();
+
+app.use("/api/usage", usageCheckRateLimiter);
 
 // Apply analytics rate limiter ONLY to analytics tracking endpoint
 app.use("/admin/analytics/track", analyticsRateLimiter);
