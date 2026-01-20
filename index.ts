@@ -123,11 +123,23 @@ app.post(
 // ============================================================
 if (process.env.NODE_ENV === "production") {
   console.log("🛡️  Rate limiting ENABLED (production)");
-  app.use(generalRateLimiter);
-  app.use(speedLimiter);
+  
+  // ✅ FIXED: Exclude OAuth routes from rate limiting
+  app.use((req, res, next) => {
+    if (req.path.startsWith('/authenticate')) {
+      return next(); // Skip rate limiting for OAuth
+    }
+    generalRateLimiter(req, res, next);
+  });
+  
+  app.use((req, res, next) => {
+    if (req.path.startsWith('/authenticate')) {
+      return next(); // Skip speed limiting for OAuth
+    }
+    speedLimiter(req, res, next);
+  });
 } else {
   console.log("🔓 Rate limiting DISABLED (development)");
-  // No rate limiting in development
 }
 
 // Body parser (comes AFTER webhook)
