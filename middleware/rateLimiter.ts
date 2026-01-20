@@ -19,7 +19,7 @@ const rateLimitConfig = {
 export const generalRateLimiter = isProduction 
   ? rateLimit({
       ...rateLimitConfig,
-      windowMs: 15 * 60 * 1000,
+      windowMs: 10 * 60 * 1000,
       max: 100,
       message: { error: "Too many requests, please try again later" },
     })
