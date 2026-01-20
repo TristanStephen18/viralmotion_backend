@@ -20,7 +20,7 @@ export const generalRateLimiter = isProduction
   ? rateLimit({
       ...rateLimitConfig,
       windowMs: 10 * 60 * 1000,
-      max: 100,
+      max: 1000,
       message: { error: "Too many requests, please try again later" },
     })
   : (req: any, res: any, next: any) => next();
